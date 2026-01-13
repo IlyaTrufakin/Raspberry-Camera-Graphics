@@ -6,11 +6,15 @@
 #include <iostream>
 #include <memory>
 #include <map>
+#include <array>
 #include <sys/mman.h>
 #include <poll.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include <drm_fourcc.h>
 #include <gbm.h>
 
 #include <EGL/egl.h>
@@ -18,9 +22,28 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
+#include <chrono>
+
+// EGL Image extensions
+typedef EGLImageKHR (*PFNEGLCREATEIMAGEKHRPROC)(EGLDisplay, EGLContext, EGLenum, EGLClientBuffer, const EGLint *);
+typedef EGLBoolean (*PFNEGLDESTROYIMAGEKHRPROC)(EGLDisplay, EGLImageKHR);
+typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum, GLeglImageOES);
+
 #include <libcamera/libcamera.h>
 #include <linux/dma-buf.h>
 #include <sys/ioctl.h>
+
+#ifndef DRM_FORMAT_R8
+#define DRM_FORMAT_R8 fourcc_code('R', '8', ' ', ' ')
+#endif
+
+#ifndef EGL_LINUX_DMA_BUF_EXT
+#define EGL_LINUX_DMA_BUF_EXT 0x3270
+#define EGL_LINUX_DRM_FOURCC_EXT 0x3271
+#define EGL_DMA_BUF_PLANE0_FD_EXT 0x3272
+#define EGL_DMA_BUF_PLANE0_OFFSET_EXT 0x3273
+#define EGL_DMA_BUF_PLANE0_PITCH_EXT 0x3274
+#endif
 
 using namespace libcamera;
 
@@ -37,24 +60,15 @@ void main() {
 }
 )";
 
-// Fragment shader для YUV420 -> RGB конверсии
+// Fragment shader для Y-plane (черно-белое изображение)
 const char* video_fs_src = R"(
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTextureY;
-uniform sampler2D uTextureU;
-uniform sampler2D uTextureV;
 
 void main() {
     float y = texture2D(uTextureY, vTexCoord).r;
-    float u = texture2D(uTextureU, vTexCoord).r - 0.5;
-    float v = texture2D(uTextureV, vTexCoord).r - 0.5;
-
-    float r = y + 1.402 * v;
-    float g = y - 0.344 * u - 0.714 * v;
-    float b = y + 1.772 * u;
-
-    gl_FragColor = vec4(r, g, b, 1.0);
+    gl_FragColor = vec4(y, y, y, 1.0);
 }
 )";
 
@@ -392,13 +406,16 @@ int main()
     std::shared_ptr<Camera> camera = camera_manager->cameras()[0];
     camera->acquire();
 
-    // Конфигурация камеры - используем разрешение дисплея
+    // Конфигурация камеры - используем 1920x1080 (нативный режим IMX477 для высокого FPS)
+    // Viewfinder режим обычно дает более высокий FPS чем VideoRecording
     std::unique_ptr<CameraConfiguration> config =
-        camera->generateConfiguration({ StreamRole::VideoRecording });
+        camera->generateConfiguration({ StreamRole::Viewfinder });
 
     StreamConfiguration &streamConfig = config->at(0);
-    streamConfig.size.width = mode.hdisplay;
-    streamConfig.size.height = mode.vdisplay;
+    // Используем 4x4 binning режим IMX477 для максимального FPS (до 120 FPS)
+    // Это самый быстрый режим, который ISP сможет обработать
+    streamConfig.size.width = 1012;   // 4x4 binning - максимальная скорость
+    streamConfig.size.height = 760;
     streamConfig.pixelFormat = PixelFormat::fromString("YUV420");
 
     // Минимальная буферизация для низкой задержки
@@ -406,6 +423,13 @@ int main()
 
     config->validate();
     camera->configure(config.get());
+
+    // Выводим реальную конфигурацию камеры
+    printf("Camera configuration after validate:\n");
+    printf("  Resolution: %dx%d\n", streamConfig.size.width, streamConfig.size.height);
+    printf("  Pixel format: %s\n", streamConfig.pixelFormat.toString().c_str());
+    printf("  Buffer count: %d\n", streamConfig.bufferCount);
+    printf("  Stride: %d\n", streamConfig.stride);
 
     // Создаем буферы
     FrameBufferAllocator *allocator = new FrameBufferAllocator(camera);
@@ -426,37 +450,19 @@ int main()
     GLint video_aPos = glGetAttribLocation(video_prog, "aPos");
     GLint video_aTexCoord = glGetAttribLocation(video_prog, "aTexCoord");
     GLint video_uTextureY = glGetUniformLocation(video_prog, "uTextureY");
-    GLint video_uTextureU = glGetUniformLocation(video_prog, "uTextureU");
-    GLint video_uTextureV = glGetUniformLocation(video_prog, "uTextureV");
 
     GLint overlay_aPos = glGetAttribLocation(overlay_prog, "aPos");
     GLint overlay_uColor = glGetUniformLocation(overlay_prog, "uColor");
 
-    // Создаем текстуры для YUV420
-    GLuint textures[3];
-    glGenTextures(3, textures);
-
-    // Предварительно выделяем память для текстур
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
+    // Создаем только одну текстуру для Y-plane (черно-белое)
+    GLuint y_texture;
+    glGenTextures(1, &y_texture);
+    glBindTexture(GL_TEXTURE_2D, y_texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mode.hdisplay, mode.vdisplay, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
-
-    glBindTexture(GL_TEXTURE_2D, textures[1]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mode.hdisplay / 2, mode.vdisplay / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
-
-    glBindTexture(GL_TEXTURE_2D, textures[2]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mode.hdisplay / 2, mode.vdisplay / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 1012, 760, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
 
     // Fullscreen quad для видео
     float quad_vertices[] = {
@@ -498,73 +504,134 @@ int main()
 
     /* ================= START CAMERA ================= */
 
-    // Mapping для хранения requests
-    std::map<FrameBuffer *, std::unique_ptr<Request>> pending_requests;
-
-    camera->start();
-    for (std::unique_ptr<Request> &request : requests) {
-        FrameBuffer *buffer = request->buffers().begin()->second;
-        camera->queueRequest(request.get());
-        pending_requests[buffer] = std::move(request);
-    }
-
-    printf("Camera started. Resolution: %dx%d (low latency mode)\n", mode.hdisplay, mode.vdisplay);
-
-    /* ================= RENDER LOOP ================= */
+    // Глобальные переменные для обработки кадров
     int frame_count = 0;
     int demo_value = 0;
     FrameBuffer *last_frame = nullptr;
 
+    // Для периодического обновления HUD (каждые 150-200ms)
+    auto last_hud_update = std::chrono::steady_clock::now();
+
     gbm_bo *previous_bo = bo;
     uint32_t previous_fb = fb;
 
-    while (true) {
-        // Находим любой завершенный request
-        Request *completed_req = nullptr;
+    // Queue для обработки requests
+    std::map<FrameBuffer *, Request *> pending_requests;
 
+    // Мапим все буферы заранее, чтобы не делать mmap/munmap на каждом кадре
+    std::map<int, void*> mapped_buffers;
+
+    camera->start();
+
+    for (std::unique_ptr<Request> &request : requests) {
+        FrameBuffer *buffer = request->buffers().begin()->second;
+        pending_requests[buffer] = request.get();
+
+        // Мапим буфер один раз
+        const FrameBuffer::Plane &plane = buffer->planes()[0];
+        void *mapped = mmap(nullptr, plane.offset + plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+        if (mapped != MAP_FAILED) {
+            mapped_buffers[plane.fd.get()] = mapped;
+        }
+
+        camera->queueRequest(request.get());
+    }
+
+    printf("Camera started. Resolution: %dx%d (B&W mode)\n", mode.hdisplay, mode.vdisplay);
+
+    /* ================= RENDER LOOP ================= */
+
+    auto last_fps_print = std::chrono::steady_clock::now();
+    int fps_counter = 0;
+
+    int total_completed = 0;
+    int total_loops = 0;
+
+    while (true) {
+        total_loops++;
+
+        auto tpoll_start = std::chrono::steady_clock::now();
+
+        // Проверяем завершенные requests и собираем ВСЕ завершенные
+        std::vector<Request*> completed_reqs;
         for (auto &pair : pending_requests) {
-            if (pair.second && pair.second->status() == Request::RequestComplete) {
-                completed_req = pair.second.get();
-                break; // Берем первый попавшийся готовый кадр
+            if (pair.second->status() == Request::RequestComplete) {
+                completed_reqs.push_back(pair.second);
             }
         }
 
-        // Если получили кадр, загружаем его в текстуры
-        if (completed_req) {
+        int completed_count = completed_reqs.size();
+        Request *completed_req = nullptr;
+
+        if (completed_count > 0) {
+            // ВАЖНО: Берем ПОСЛЕДНИЙ (самый новый) кадр, а старые сразу возвращаем
+            completed_req = completed_reqs.back();
             last_frame = completed_req->buffers().begin()->second;
+        }
 
+        auto tpoll_end = std::chrono::steady_clock::now();
+
+        // Если нет кадра - продолжаем проверять
+        if (!completed_req) {
+            continue;
+        }
+
+        total_completed++;
+
+        // Возвращаем старые кадры в очередь (все кроме последнего)
+        for (size_t i = 0; i < completed_reqs.size() - 1; i++) {
+            completed_reqs[i]->reuse(Request::ReuseBuffers);
+            camera->queueRequest(completed_reqs[i]);
+        }
+
+        // Диагностика - сколько кадров пропускаем (отключено для чистого вывода)
+        // if (completed_count > 1) {
+        //     printf("WARNING: %d frames completed at once! (skipped %d old frames)\n", completed_count, completed_count - 1);
+        // }
+
+        // Засекаем время начала обработки кадра
+        auto t0 = std::chrono::steady_clock::now();
+
+        // Измеряем время ожидания кадра
+        auto poll_time = std::chrono::duration_cast<std::chrono::microseconds>(tpoll_end - tpoll_start).count();
+
+        // Подсчет FPS
+        fps_counter++;
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_print).count();
+        if (elapsed >= 1000) {
+            printf("FPS: %.1f\n", fps_counter * 1000.0 / elapsed);
+            fps_counter = 0;
+            total_loops = 0;
+            total_completed = 0;
+            last_fps_print = now;
+        }
+
+        // Обновляем данные HUD (каждые 150-200ms)
+        elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hud_update).count();
+        if (elapsed >= 150) {
+            last_hud_update = now;
+            demo_value = (demo_value + 1) % 100;
+        }
+
+        auto t1 = std::chrono::steady_clock::now();
+
+        // Копируем Y-plane из уже замапленного буфера (БЕЗ mmap/munmap!)
+        if (last_frame) {
             const FrameBuffer::Plane &y_plane = last_frame->planes()[0];
-            const FrameBuffer::Plane &u_plane = last_frame->planes()[1];
-            const FrameBuffer::Plane &v_plane = last_frame->planes()[2];
 
-            // Мапим весь буфер один раз (все плоскости в одном буфере)
-            size_t total_size = y_plane.offset + y_plane.length;
-            if (u_plane.offset + u_plane.length > total_size)
-                total_size = u_plane.offset + u_plane.length;
-            if (v_plane.offset + v_plane.length > total_size)
-                total_size = v_plane.offset + v_plane.length;
-
-            void *mapped = mmap(nullptr, total_size, PROT_READ, MAP_SHARED, y_plane.fd.get(), 0);
-
-            if (mapped != MAP_FAILED) {
-                // Указатели на начало каждой плоскости с учетом offset
-                uint8_t *y_src = (uint8_t*)mapped + y_plane.offset;
-                uint8_t *u_src = (uint8_t*)mapped + u_plane.offset;
-                uint8_t *v_src = (uint8_t*)mapped + v_plane.offset;
-
-                // Вычисляем stride из length (для YUV420: stride = length / height)
+            // Получаем уже замапленный буфер
+            auto it = mapped_buffers.find(y_plane.fd.get());
+            if (it != mapped_buffers.end()) {
+                uint8_t *y_src = (uint8_t*)it->second + y_plane.offset;
                 uint32_t y_stride = y_plane.length / streamConfig.size.height;
-                uint32_t u_stride = u_plane.length / (streamConfig.size.height / 2);
-                uint32_t v_stride = v_plane.length / (streamConfig.size.height / 2);
-
-                // Загружаем в текстуры напрямую с использованием GL_UNPACK_ROW_LENGTH_EXT
-                // если stride совпадает, или с построчным копированием если нет
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, textures[0]);
+                glBindTexture(GL_TEXTURE_2D, y_texture);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
                 if (y_stride == streamConfig.size.width) {
-                    // Stride совпадает - обновляем напрямую без копирования
+                    // Stride совпадает - копируем напрямую
                     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                                    streamConfig.size.width, streamConfig.size.height,
                                    GL_LUMINANCE, GL_UNSIGNED_BYTE, y_src);
@@ -577,60 +644,24 @@ int main()
                     glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
                 }
 
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_2D, textures[1]);
-                if (u_stride == streamConfig.size.width / 2) {
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                                   streamConfig.size.width / 2, streamConfig.size.height / 2,
-                                   GL_LUMINANCE, GL_UNSIGNED_BYTE, u_src);
-                } else {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, u_stride);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                                   streamConfig.size.width / 2, streamConfig.size.height / 2,
-                                   GL_LUMINANCE, GL_UNSIGNED_BYTE, u_src);
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
-                }
-
-                glActiveTexture(GL_TEXTURE2);
-                glBindTexture(GL_TEXTURE_2D, textures[2]);
-                if (v_stride == streamConfig.size.width / 2) {
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                                   streamConfig.size.width / 2, streamConfig.size.height / 2,
-                                   GL_LUMINANCE, GL_UNSIGNED_BYTE, v_src);
-                } else {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, v_stride);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                                   streamConfig.size.width / 2, streamConfig.size.height / 2,
-                                   GL_LUMINANCE, GL_UNSIGNED_BYTE, v_src);
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
-                }
-
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
-                munmap(mapped, total_size);
             }
 
-            // Возвращаем request обратно
+            // Возвращаем request обратно в очередь
             completed_req->reuse(Request::ReuseBuffers);
             camera->queueRequest(completed_req);
-
-            // Рендерим только когда получили новый кадр
-        } else {
-            // Нет нового кадра - короткая задержка чтобы не перегружать CPU
-            usleep(100); // 0.1ms
-            continue;
+            frame_count++;
         }
+
+        auto t2 = std::chrono::steady_clock::now();
 
         // Очищаем экран
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // 1. Рендерим видео
+        // 1. Рендерим видео (черно-белое)
         if (last_frame) {
             glUseProgram(video_prog);
-
             glUniform1i(video_uTextureY, 0);
-            glUniform1i(video_uTextureU, 1);
-            glUniform1i(video_uTextureV, 2);
 
             glEnableVertexAttribArray(video_aPos);
             glEnableVertexAttribArray(video_aTexCoord);
@@ -641,22 +672,33 @@ int main()
             glDisableVertexAttribArray(video_aTexCoord);
         }
 
-        // 2. Рендерим HUD overlay поверх видео
+        auto t3 = std::chrono::steady_clock::now();
+
+        // 2. Рисуем HUD
         glUseProgram(overlay_prog);
-
-        // Прицел в центре
         draw_crosshair(overlay_prog, overlay_aPos, overlay_uColor);
-
-        // HUD элементы в углах
         draw_hud_value(overlay_prog, overlay_aPos, overlay_uColor, -0.95f, 0.85f, demo_value);
         draw_hud_value(overlay_prog, overlay_aPos, overlay_uColor, 0.70f, 0.85f, frame_count);
-
-        // Текстовые метки
         draw_text(overlay_prog, overlay_aPos, overlay_uColor, -0.95f, -0.95f, "SPEED", 0.03f, 1.0f, 1.0f, 0.0f, 0.9f);
         draw_text(overlay_prog, overlay_aPos, overlay_uColor, 0.70f, -0.95f, "FPS", 0.03f, 1.0f, 1.0f, 0.0f, 0.9f);
 
         // Swap EGL buffers
         eglSwapBuffers(egl_display, egl_surface);
+
+        auto t4 = std::chrono::steady_clock::now();
+
+        // Детальная диагностика времени
+        auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(t4 - t0).count();
+        auto time_prep = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        auto time_copy = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        auto time_draw = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+        auto time_swap = std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count();
+
+        // Детальная диагностика отключена для чистого вывода
+        // if (fps_counter <= 3) {
+        //     printf("Frame timing: poll=%ld us, prep=%ld copy=%ld draw=%ld swap=%ld TOTAL=%ld us\n",
+        //            poll_time, time_prep, time_copy, time_draw, time_swap, poll_time + total_time);
+        // }
 
         // DRM page flip - обновляем экран
         gbm_bo *next_bo = gbm_surface_lock_front_buffer(gbm_surf);
