@@ -265,6 +265,10 @@ int main() {
     crosshair.line_width = 2.0f;
     hud.setCrosshairConfig(crosshair);
 
+    // Добавляем текстовые надписи на кириллице
+    hud.addTextPosition(TextPosition(0.02f, 0.05f, "Скорость: 120 км/ч", 0.5f, Color(1.0f, 1.0f, 0.0f, 1.0f)));
+    hud.addTextPosition(TextPosition(0.02f, 0.10f, "Высота: 250 м", 0.5f, Color(0.0f, 1.0f, 1.0f, 1.0f)));
+
     // Инициализация Modbus клиента (опционально)
     ModbusClient modbus;
     bool use_modbus = false;
@@ -322,6 +326,8 @@ int main() {
 
     auto last_time = std::chrono::steady_clock::now();
     int frame_count = 0;
+    int current_fps = 0;
+    std::string fps_text = "FPS: 0";
 
     // Главный цикл
     while (true) {
@@ -389,15 +395,38 @@ int main() {
         // Отрисовка HUD
         hud.render();
 
+        // Отрисовка FPS (динамически обновляемое значение)
+        // Конвертируем нормализованные координаты в пиксели
+        float fps_x = 0.70f * drm.mode.hdisplay;
+        float fps_y = 0.05f * drm.mode.vdisplay;
+        hud.renderTextDirect(fps_text, fps_x, fps_y, 0.5f, Color(1.0f, 1.0f, 1.0f, 1.0f));
+
         // Swap буферов
         eglSwapBuffers(drm.egl_display, drm.egl_surface);
+
+        // DRM page flip для отображения на экране
+        gbm_bo *bo = gbm_surface_lock_front_buffer(drm.gbm_surf);
+        uint32_t fb_id;
+        uint32_t handle = gbm_bo_get_handle(bo).u32;
+        uint32_t pitch = gbm_bo_get_stride(bo);
+        uint32_t offset = 0;
+
+        drmModeAddFB(drm.fd, drm.mode.hdisplay, drm.mode.vdisplay, 24, 32,
+                     pitch, handle, &fb_id);
+
+        drmModeSetCrtc(drm.fd, drm.crtc_id, fb_id, 0, 0,
+                       &drm.connector_id, 1, &drm.mode);
+
+        gbm_surface_release_buffer(drm.gbm_surf, bo);
 
         // Подсчет FPS
         frame_count++;
         auto current_time = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - last_time).count();
         if (elapsed >= 1) {
-            std::cout << "FPS: " << frame_count << std::endl;
+            current_fps = frame_count;
+            fps_text = "FPS: " + std::to_string(current_fps);
+            std::cout << "FPS: " << current_fps << std::endl;
             frame_count = 0;
             last_time = current_time;
         }

@@ -1,8 +1,8 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O2 -I/usr/include/libcamera -I/usr/include/libdrm
+CXXFLAGS = -std=c++17 -Wall -O2 -I/usr/include/libcamera -I/usr/include/libdrm -I/usr/include/freetype2
 
 # Библиотеки для разных версий
-LIBS_GLES2 = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread
+LIBS_GLES2 = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread -lfreetype
 LIBS_GLES1 = -ldrm -lgbm -lEGL -lGLES
 
 # Исходные файлы для модульной версии
