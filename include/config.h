@@ -34,6 +34,7 @@ struct ModbusSettings {
     bool enabled = false;
     std::string ip = "192.168.0.78";
     uint16_t port = 502;
+    uint8_t unit_id = 1;
     int update_ms = 150;
     std::map<std::string, uint16_t> registers;
 };

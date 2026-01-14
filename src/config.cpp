@@ -190,6 +190,11 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 config.modbus.ip = value;
             } else if (key == "port") {
                 parseU16(value, config.modbus.port);
+            } else if (key == "unit_id") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp) && tmp <= 255) {
+                    config.modbus.unit_id = static_cast<uint8_t>(tmp);
+                }
             } else if (key == "update_ms") {
                 uint32_t tmp = 0;
                 if (parseUInt(value, tmp)) {

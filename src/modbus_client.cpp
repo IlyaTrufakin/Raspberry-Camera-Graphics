@@ -1,17 +1,23 @@
 #include "modbus_client.h"
 
-#include <arpa/inet.h>
-#include <cstring>
+#include <cerrno>
 #include <iostream>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <limits>
+#include <mutex>
+#include <vector>
+
+#include <modbus/modbus.h>
 
 ModbusClient::ModbusClient()
-    : socket_fd_(-1), connected_(false), server_port_(502) {
+    : ctx_(nullptr), connected_(false), server_port_(502), unit_id_(1) {
 }
 
 ModbusClient::~ModbusClient() {
     disconnect();
+}
+
+void ModbusClient::setUnitId(uint8_t unit_id) {
+    unit_id_ = unit_id;
 }
 
 bool ModbusClient::connect(const std::string& ip, uint16_t port) {
@@ -22,29 +28,28 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     server_ip_ = ip;
     server_port_ = port;
 
-    // Создать сокет
-    socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd_ < 0) {
-        std::cerr << "Failed to create socket" << std::endl;
+    ctx_ = modbus_new_tcp(server_ip_.c_str(), server_port_);
+    if (!ctx_) {
+        std::cerr << "Failed to create Modbus context" << std::endl;
         return false;
     }
 
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(server_port_);
-
-    if (inet_pton(AF_INET, server_ip_.c_str(), &server_addr.sin_addr) <= 0) {
-        std::cerr << "Invalid IP address: " << server_ip_ << std::endl;
-        close(socket_fd_);
-        socket_fd_ = -1;
+    if (modbus_set_slave(ctx_, unit_id_) == -1) {
+        std::cerr << "Failed to set Modbus unit id " << static_cast<int>(unit_id_)
+                  << " error=" << modbus_strerror(errno) << std::endl;
+        modbus_free(ctx_);
+        ctx_ = nullptr;
         return false;
     }
 
-    if (::connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        std::cerr << "Failed to connect to " << server_ip_ << ":" << server_port_ << std::endl;
-        close(socket_fd_);
-        socket_fd_ = -1;
+    modbus_set_response_timeout(ctx_, 0, 200000);
+    modbus_set_byte_timeout(ctx_, 0, 200000);
+
+    if (modbus_connect(ctx_) == -1) {
+        std::cerr << "Failed to connect to " << server_ip_ << ":" << server_port_
+                  << " error=" << modbus_strerror(errno) << std::endl;
+        modbus_free(ctx_);
+        ctx_ = nullptr;
         return false;
     }
 
@@ -54,14 +59,17 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
 }
 
 void ModbusClient::disconnect() {
-    if (socket_fd_ >= 0) {
-        close(socket_fd_);
-        socket_fd_ = -1;
+    std::lock_guard<std::mutex> lock(ctx_mutex_);
+    if (ctx_) {
+        modbus_close(ctx_);
+        modbus_free(ctx_);
+        ctx_ = nullptr;
     }
     connected_ = false;
 }
 
 void ModbusClient::registerVariable(const std::string& name, uint16_t address) {
+    std::lock_guard<std::mutex> lock(variables_mutex_);
     variables_[name] = ModbusVariable(address);
     std::cout << "Registered Modbus variable '" << name << "' at address " << address << std::endl;
 }
@@ -71,20 +79,65 @@ bool ModbusClient::readVariables() {
         return false;
     }
 
-    for (auto& pair : variables_) {
-        uint16_t value;
-        if (readHoldingRegisters(pair.second.address, 1, &value)) {
-            pair.second.value = value;
-            pair.second.valid = true;
-        } else {
+    std::vector<std::pair<std::string, ModbusVariable>> vars_copy;
+    {
+        std::lock_guard<std::mutex> lock(variables_mutex_);
+        if (variables_.empty()) {
+            return true;
+        }
+        vars_copy.reserve(variables_.size());
+        for (const auto& pair : variables_) {
+            vars_copy.push_back(pair);
+        }
+    }
+
+    uint16_t min_addr = std::numeric_limits<uint16_t>::max();
+    uint16_t max_addr = 0;
+    for (const auto& pair : vars_copy) {
+        min_addr = std::min(min_addr, pair.second.address);
+        max_addr = std::max(max_addr, pair.second.address);
+    }
+
+    uint16_t count = static_cast<uint16_t>(max_addr - min_addr + 1);
+    if (count > 0 && count <= 125) {
+        std::vector<uint16_t> values(count, 0);
+        if (readHoldingRegisters(min_addr, count, values.data())) {
+            std::lock_guard<std::mutex> lock(variables_mutex_);
+            for (auto& pair : variables_) {
+                uint16_t offset = static_cast<uint16_t>(pair.second.address - min_addr);
+                pair.second.value = values[offset];
+                pair.second.valid = true;
+            }
+            return true;
+        }
+    }
+
+    bool any_ok = false;
+    {
+        std::lock_guard<std::mutex> lock(variables_mutex_);
+        for (auto& pair : variables_) {
             pair.second.valid = false;
         }
     }
 
-    return true;
+    for (const auto& pair : vars_copy) {
+        uint16_t value;
+        if (readHoldingRegisters(pair.second.address, 1, &value)) {
+            std::lock_guard<std::mutex> lock(variables_mutex_);
+            auto it = variables_.find(pair.first);
+            if (it != variables_.end()) {
+                it->second.value = value;
+                it->second.valid = true;
+            }
+            any_ok = true;
+        }
+    }
+
+    return any_ok;
 }
 
 bool ModbusClient::getVariable(const std::string& name, uint16_t& value) {
+    std::lock_guard<std::mutex> lock(variables_mutex_);
     auto it = variables_.find(name);
     if (it == variables_.end() || !it->second.valid) {
         return false;
@@ -107,52 +160,13 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
         return false;
     }
 
-    // Запрос Modbus TCP (Read Holding Registers)
-    uint8_t request[12];
-    static uint16_t transaction_id = 0;
-
-    request[0] = (transaction_id >> 8) & 0xFF;
-    request[1] = transaction_id & 0xFF;
-    request[2] = 0;
-    request[3] = 0;
-    request[4] = 0;
-    request[5] = 6;
-    request[6] = 1;
-
-    request[7] = 0x03;
-    request[8] = (address >> 8) & 0xFF;
-    request[9] = address & 0xFF;
-    request[10] = (count >> 8) & 0xFF;
-    request[11] = count & 0xFF;
-
-    transaction_id++;
-
-    ssize_t sent = send(socket_fd_, request, sizeof(request), 0);
-    if (sent != sizeof(request)) {
-        std::cerr << "Failed to send Modbus request" << std::endl;
+    std::lock_guard<std::mutex> lock(ctx_mutex_);
+    int rc = modbus_read_registers(ctx_, address, count, values);
+    if (rc != count) {
+        std::cerr << "Modbus read failed: addr=" << address
+                  << " count=" << count
+                  << " error=" << modbus_strerror(errno) << std::endl;
         return false;
-    }
-
-    uint8_t response[256];
-    ssize_t received = recv(socket_fd_, response, sizeof(response), 0);
-    if (received < 9) {
-        std::cerr << "Invalid Modbus response" << std::endl;
-        return false;
-    }
-
-    if (response[7] != 0x03) {
-        std::cerr << "Invalid function code in response: " << (int)response[7] << std::endl;
-        return false;
-    }
-
-    uint8_t byte_count = response[8];
-    if (byte_count != count * 2) {
-        std::cerr << "Invalid byte count in response" << std::endl;
-        return false;
-    }
-
-    for (uint16_t i = 0; i < count; i++) {
-        values[i] = (response[9 + i * 2] << 8) | response[10 + i * 2];
     }
 
     return true;

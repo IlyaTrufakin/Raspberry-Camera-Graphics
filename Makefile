@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -O2 -Iinclude -I/usr/include/libcamera -I/usr/include/libdrm -I/usr/include/freetype2
 
-LIBS = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread -lfreetype
+LIBS = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread -lfreetype -lmodbus
 
 SRC_DIR = src
 SOURCES = $(SRC_DIR)/main.cpp \

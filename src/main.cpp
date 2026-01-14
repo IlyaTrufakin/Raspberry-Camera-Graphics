@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 #ifndef GL_UNPACK_ROW_LENGTH_EXT
@@ -253,6 +254,7 @@ int main() {
     ModbusClient modbus;
     bool use_modbus = false;
     if (app_config.modbus.enabled) {
+        modbus.setUnitId(app_config.modbus.unit_id);
         if (modbus.connect(app_config.modbus.ip, app_config.modbus.port)) {
             for (const auto& entry : app_config.modbus.registers) {
                 modbus.registerVariable(entry.first, entry.second);
@@ -261,6 +263,18 @@ int main() {
         } else {
             std::cerr << "Modbus connect failed, running without Modbus" << std::endl;
         }
+    }
+
+    int modbus_interval_ms = app_config.modbus.update_ms > 0 ? app_config.modbus.update_ms : 150;
+    std::thread modbus_thread;
+    if (use_modbus) {
+        modbus_thread = std::thread([&modbus, modbus_interval_ms]() {
+            while (true) {
+                modbus.readVariables();
+                std::this_thread::sleep_for(std::chrono::milliseconds(modbus_interval_ms));
+            }
+        });
+        modbus_thread.detach();
     }
 
     GLuint video_vs = glCreateShader(GL_VERTEX_SHADER);
@@ -307,14 +321,12 @@ int main() {
     int frame_count = 0;
     int current_fps = 0;
     std::string fps_text = "0";
+    int16_t crosshair_offset_x = 0;
+    int16_t crosshair_offset_y = 0;
 
     int hud_interval_ms = app_config.hud_update_ms > 0 ? app_config.hud_update_ms : 150;
-    int modbus_interval_ms = app_config.modbus.update_ms > 0 ? app_config.modbus.update_ms : 150;
-
     auto last_hud_update = std::chrono::steady_clock::now()
                            - std::chrono::milliseconds(hud_interval_ms);
-    auto last_modbus_update = std::chrono::steady_clock::now()
-                              - std::chrono::milliseconds(modbus_interval_ms);
 
     auto rebuildHudText = [&](const std::string& fps_value) {
         hud.clearTextPositions();
@@ -327,7 +339,12 @@ int main() {
             if (item.name == "fps") {
                 text = fps_value;
             } else if (use_modbus) {
-                text = modbus.getVariableString(item.name);
+                uint16_t value = 0;
+                if (modbus.getVariable(item.name, value)) {
+                    text = std::to_string(value);
+                } else {
+                    text = "0";
+                }
             }
             hud.addTextPosition(TextPosition(item.x, item.y, text, item.scale, item.color));
         }
@@ -363,28 +380,20 @@ int main() {
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (use_modbus &&
-            now - last_modbus_update >= std::chrono::milliseconds(modbus_interval_ms)) {
-            modbus.readVariables();
-            last_modbus_update = now;
-        }
-
         if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
             if (use_modbus) {
                 uint16_t raw_x = 0;
                 uint16_t raw_y = 0;
-                int16_t offset_x = 0;
-                int16_t offset_y = 0;
                 if (modbus.getVariable("crosshair_x", raw_x)) {
-                    offset_x = static_cast<int16_t>(raw_x);
+                    crosshair_offset_x = static_cast<int16_t>(raw_x);
                 }
                 if (modbus.getVariable("crosshair_y", raw_y)) {
-                    offset_y = static_cast<int16_t>(raw_y);
+                    crosshair_offset_y = static_cast<int16_t>(raw_y);
                 }
 
                 CrosshairConfig cross = app_config.crosshair;
-                cross.center_x = 0.5f + static_cast<float>(offset_x) / static_cast<float>(drm.mode.hdisplay);
-                cross.center_y = 0.5f + static_cast<float>(offset_y) / static_cast<float>(drm.mode.vdisplay);
+                cross.center_x = 0.5f + static_cast<float>(crosshair_offset_x) / static_cast<float>(drm.mode.hdisplay);
+                cross.center_y = 0.5f + static_cast<float>(crosshair_offset_y) / static_cast<float>(drm.mode.vdisplay);
                 if (cross.center_x < 0.0f) cross.center_x = 0.0f;
                 if (cross.center_x > 1.0f) cross.center_x = 1.0f;
                 if (cross.center_y < 0.0f) cross.center_y = 0.0f;
