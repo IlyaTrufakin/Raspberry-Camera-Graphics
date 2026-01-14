@@ -1,7 +1,8 @@
 #include "hud_overlay.h"
-#include <iostream>
+
 #include <cmath>
 #include <codecvt>
+#include <iostream>
 #include <locale>
 
 // Vertex shader для HUD
@@ -51,7 +52,7 @@ HUDOverlay::HUDOverlay()
 }
 
 HUDOverlay::~HUDOverlay() {
-    // Очистка текстур символов
+    // Освободить текстуры глифов
     for (auto& pair : characters_) {
         glDeleteTextures(1, &pair.second.texture_id);
     }
@@ -119,13 +120,13 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
         return false;
     }
 
-    // Установка размера шрифта
+    // Размер шрифта в пикселях
     FT_Set_Pixel_Sizes(ft_face_, 0, 48);
 
-    // Отключаем выравнивание байтов
+    // Выравнивание для текстур глифов
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    // Предзагрузка ASCII символов и основных кириллических
+    // ASCII глифы
     for (uint32_t c = 32; c < 128; c++) {
         if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
             std::cerr << "Failed to load glyph for char: " << c << std::endl;
@@ -158,8 +159,8 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
         characters_[c] = character;
     }
 
-    // Предзагрузка кириллицы (А-Я, а-я, Ё, ё)
-    for (uint32_t c = 0x0410; c <= 0x044F; c++) {  // А-Я, а-я
+    // Кириллица
+    for (uint32_t c = 0x0410; c <= 0x044F; c++) {
         if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
             continue;
         }
@@ -190,7 +191,7 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
         characters_[c] = character;
     }
 
-    // Ё и ё
+    // Специальные символы кириллицы
     uint32_t cyrillic_special[] = {0x0401, 0x0451};
     for (uint32_t c : cyrillic_special) {
         if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
@@ -228,9 +229,8 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
     std::cout << "Font loaded: " << font_path << std::endl;
     std::cout << "Total glyphs cached: " << characters_.size() << std::endl;
 
-    // Проверим несколько кириллических символов
     std::cout << "Checking Cyrillic glyphs:" << std::endl;
-    uint32_t test_chars[] = {0x0421, 0x043A, 0x043E, 0x0440};  // С, к, о, р
+    uint32_t test_chars[] = {0x0421, 0x043A, 0x043E, 0x0440};
     for (uint32_t c : test_chars) {
         auto it = characters_.find(c);
         if (it != characters_.end()) {
@@ -248,7 +248,7 @@ bool HUDOverlay::initialize(uint32_t display_width, uint32_t display_height,
     display_width_ = display_width;
     display_height_ = display_height;
 
-    // Компиляция шейдеров для HUD
+    // Шейдер для HUD
     GLuint hud_vs, hud_fs;
     compileShader(hud_vs_src, GL_VERTEX_SHADER, hud_vs);
     compileShader(hud_fs_src, GL_FRAGMENT_SHADER, hud_fs);
@@ -256,7 +256,7 @@ bool HUDOverlay::initialize(uint32_t display_width, uint32_t display_height,
     glDeleteShader(hud_vs);
     glDeleteShader(hud_fs);
 
-    // Компиляция шейдеров для текста
+    // Шейдер для текста
     GLuint text_vs, text_fs;
     compileShader(text_vs_src, GL_VERTEX_SHADER, text_vs);
     compileShader(text_fs_src, GL_FRAGMENT_SHADER, text_fs);
@@ -264,10 +264,9 @@ bool HUDOverlay::initialize(uint32_t display_width, uint32_t display_height,
     glDeleteShader(text_vs);
     glDeleteShader(text_fs);
 
-    // Создание VBO для HUD
+    // VBO
     glGenBuffers(1, &hud_vbo_);
 
-    // Создание VBO для текста
     glGenBuffers(1, &text_vbo_);
     glBindBuffer(GL_ARRAY_BUFFER, text_vbo_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
@@ -286,6 +285,10 @@ void HUDOverlay::setCrosshairConfig(const CrosshairConfig& config) {
     crosshair_config_ = config;
 }
 
+void HUDOverlay::setPanelConfig(const PanelConfig& config) {
+    panel_config_ = config;
+}
+
 void HUDOverlay::addTextPosition(const TextPosition& text_pos) {
     text_positions_.push_back(text_pos);
 }
@@ -295,9 +298,12 @@ void HUDOverlay::clearTextPositions() {
 }
 
 void HUDOverlay::render() {
-    // Включаем блендинг для прозрачности
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    if (panel_config_.enabled) {
+        renderPanel();
+    }
 
     if (crosshair_config_.enabled) {
         renderCrosshair();
@@ -308,10 +314,44 @@ void HUDOverlay::render() {
     glDisable(GL_BLEND);
 }
 
+void HUDOverlay::renderPanel() {
+    glUseProgram(hud_program_);
+
+    GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
+    glUniform4f(colorLoc,
+                panel_config_.color.r,
+                panel_config_.color.g,
+                panel_config_.color.b,
+                panel_config_.color.a);
+
+    float x0 = panel_config_.x * 2.0f - 1.0f;
+    float x1 = (panel_config_.x + panel_config_.width) * 2.0f - 1.0f;
+    float y0 = panel_config_.y * 2.0f - 1.0f;
+    float y1 = (panel_config_.y + panel_config_.height) * 2.0f - 1.0f;
+
+    float panel_vertices[] = {
+        x0, y0,
+        x1, y0,
+        x0, y1,
+        x1, y1
+    };
+
+    glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(panel_vertices), panel_vertices, GL_DYNAMIC_DRAW);
+
+    GLint posLoc = glGetAttribLocation(hud_program_, "aPos");
+    glEnableVertexAttribArray(posLoc);
+    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glDisableVertexAttribArray(posLoc);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 void HUDOverlay::renderCrosshair() {
     glUseProgram(hud_program_);
 
-    // Устанавливаем цвет прицела
     GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
     glUniform4f(colorLoc,
                 crosshair_config_.color.r,
@@ -319,14 +359,12 @@ void HUDOverlay::renderCrosshair() {
                 crosshair_config_.color.b,
                 crosshair_config_.color.a);
 
-    // Преобразуем нормализованные координаты в координаты OpenGL (-1..1)
     float cx = crosshair_config_.center_x * 2.0f - 1.0f;
-    float cy = -(crosshair_config_.center_y * 2.0f - 1.0f);  // Инвертируем Y
+    float cy = -(crosshair_config_.center_y * 2.0f - 1.0f);
 
     float len = crosshair_config_.line_length;
     float gap = crosshair_config_.gap;
 
-    // Горизонтальная линия (слева и справа от центра)
     float h_line[] = {
         cx - len - gap, cy,
         cx - gap, cy,
@@ -334,7 +372,6 @@ void HUDOverlay::renderCrosshair() {
         cx + len + gap, cy
     };
 
-    // Вертикальная линия (сверху и снизу от центра)
     float v_line[] = {
         cx, cy - len - gap,
         cx, cy - gap,
@@ -342,10 +379,8 @@ void HUDOverlay::renderCrosshair() {
         cx, cy + len + gap
     };
 
-    // Устанавливаем толщину линий
     glLineWidth(crosshair_config_.line_width);
 
-    // Рисуем горизонтальную линию
     glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
 
@@ -356,7 +391,6 @@ void HUDOverlay::renderCrosshair() {
     glDrawArrays(GL_LINES, 0, 2);
     glDrawArrays(GL_LINES, 2, 2);
 
-    // Рисуем вертикальную линию
     glBufferData(GL_ARRAY_BUFFER, sizeof(v_line), v_line, GL_DYNAMIC_DRAW);
     glDrawArrays(GL_LINES, 0, 2);
     glDrawArrays(GL_LINES, 2, 2);
@@ -367,11 +401,10 @@ void HUDOverlay::renderCrosshair() {
 
 void HUDOverlay::renderText() {
     if (characters_.empty()) {
-        return;  // Шрифт не загружен
+        return;
     }
 
     for (const auto& text_pos : text_positions_) {
-        // Конвертируем нормализованные координаты в пиксели
         float x = text_pos.x * display_width_;
         float y = text_pos.y * display_height_;
 
@@ -386,14 +419,19 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
         return;
     }
 
+    GLboolean blend_enabled = glIsEnabled(GL_BLEND);
+    if (!blend_enabled) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+
     glUseProgram(text_program_);
 
-    // Ортографическая проекция
     float projection[16] = {
         2.0f / display_width_, 0, 0, 0,
-        0, -2.0f / display_height_, 0, 0,
+        0, 2.0f / display_height_, 0, 0,
         0, 0, -1, 0,
-        -1, 1, 0, 1
+        -1, -1, 0, 1
     };
 
     GLint projLoc = glGetUniformLocation(text_program_, "uProjection");
@@ -409,14 +447,15 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
     glEnableVertexAttribArray(vertexLoc);
     glVertexAttribPointer(vertexLoc, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
 
-    // Конвертируем UTF-8 в Unicode code points
     std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
     std::u32string unicode_text;
     try {
         unicode_text = converter.from_bytes(text);
     } catch (...) {
-        // Если конвертация не удалась, пропускаем
         std::cerr << "renderTextDirect: UTF-8 conversion failed for text: " << text << std::endl;
+        if (!blend_enabled) {
+            glDisable(GL_BLEND);
+        }
         return;
     }
 
@@ -427,37 +466,40 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
         first_call = false;
     }
 
-    // Рисуем каждый символ
-    int char_index = 0;
     for (char32_t c : unicode_text) {
         auto it = characters_.find(c);
         if (it == characters_.end()) {
-            // Символ не найден в кэше, пытаемся загрузить
             static int load_count = 0;
-            if (load_count < 5) {
-                std::cout << "Loading glyph dynamically: U+" << std::hex << c << std::dec << std::endl;
+            if (load_count < 10) {
+                std::cout << "Loading glyph dynamically: U+" << std::hex << c << std::dec
+                          << " ('" << (char)(c < 128 ? c : '?') << "')" << std::endl;
                 load_count++;
             }
 
             if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
                 std::cerr << "Failed to load glyph U+" << std::hex << c << std::dec << std::endl;
-                continue;  // Не удалось загрузить
+                continue;
             }
 
-            if (load_count <= 5) {
-                std::cout << "  Glyph bitmap: w=" << ft_face_->glyph->bitmap.width
+            if (load_count <= 10) {
+                std::cout << "  Glyph U+" << std::hex << c << std::dec
+                          << " bitmap: w=" << ft_face_->glyph->bitmap.width
                           << " h=" << ft_face_->glyph->bitmap.rows
+                          << " pitch=" << ft_face_->glyph->bitmap.pitch
                           << " buffer=" << (void*)ft_face_->glyph->bitmap.buffer << std::endl;
             }
 
             GLuint texture;
             glGenTextures(1, &texture);
             glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA,
-                        ft_face_->glyph->bitmap.width,
-                        ft_face_->glyph->bitmap.rows,
-                        0, GL_ALPHA, GL_UNSIGNED_BYTE,
-                        ft_face_->glyph->bitmap.buffer);
+
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                         ft_face_->glyph->bitmap.width,
+                         ft_face_->glyph->bitmap.rows,
+                         0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+                         ft_face_->glyph->bitmap.buffer);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -499,10 +541,14 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        x += (ch.advance >> 6) * scale;  // Advance в 1/64 пикселя
+        x += (ch.advance >> 6) * scale;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glDisableVertexAttribArray(vertexLoc);
+
+    if (!blend_enabled) {
+        glDisable(GL_BLEND);
+    }
 }

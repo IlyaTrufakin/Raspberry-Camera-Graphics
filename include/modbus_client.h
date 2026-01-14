@@ -1,25 +1,25 @@
 #pragma once
 
-#include <string>
 #include <cstdint>
 #include <map>
+#include <string>
 
-// Структура для хранения значения переменной Modbus
+// Описание переменной Modbus
 struct ModbusVariable {
-    uint16_t address;       // Адрес регистра
-    uint16_t value;         // Значение регистра
-    bool valid;             // Флаг валидности данных
+    uint16_t address;
+    uint16_t value;
+    bool valid;
 
     ModbusVariable(uint16_t addr = 0) : address(addr), value(0), valid(false) {}
 };
 
-// Класс для работы с Modbus TCP
+// Простой Modbus TCP клиент
 class ModbusClient {
 public:
     ModbusClient();
     ~ModbusClient();
 
-    // Подключение к Modbus TCP серверу
+    // Подключение к серверу Modbus TCP
     bool connect(const std::string& ip, uint16_t port = 502);
 
     // Отключение
@@ -28,16 +28,16 @@ public:
     // Проверка подключения
     bool isConnected() const { return connected_; }
 
-    // Регистрация переменной для чтения
+    // Зарегистрировать переменную по адресу
     void registerVariable(const std::string& name, uint16_t address);
 
-    // Чтение всех зарегистрированных переменных
+    // Прочитать все зарегистрированные переменные
     bool readVariables();
 
-    // Получение значения переменной
+    // Получить значение переменной
     bool getVariable(const std::string& name, uint16_t& value);
 
-    // Получение строкового представления переменной
+    // Получить значение как строку
     std::string getVariableString(const std::string& name);
 
 private:

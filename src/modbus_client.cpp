@@ -1,9 +1,10 @@
 #include "modbus_client.h"
-#include <iostream>
-#include <cstring>
-#include <unistd.h>
+
 #include <arpa/inet.h>
+#include <cstring>
+#include <iostream>
 #include <sys/socket.h>
+#include <unistd.h>
 
 ModbusClient::ModbusClient()
     : socket_fd_(-1), connected_(false), server_port_(502) {
@@ -21,14 +22,13 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     server_ip_ = ip;
     server_port_ = port;
 
-    // Создание сокета
+    // Создать сокет
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd_ < 0) {
         std::cerr << "Failed to create socket" << std::endl;
         return false;
     }
 
-    // Настройка адреса сервера
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -41,7 +41,6 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
         return false;
     }
 
-    // Подключение
     if (::connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         std::cerr << "Failed to connect to " << server_ip_ << ":" << server_port_ << std::endl;
         close(socket_fd_);
@@ -72,8 +71,6 @@ bool ModbusClient::readVariables() {
         return false;
     }
 
-    // Читаем каждую переменную по отдельности
-    // В реальном приложении можно оптимизировать, читая диапазоны адресов
     for (auto& pair : variables_) {
         uint16_t value;
         if (readHoldingRegisters(pair.second.address, 1, &value)) {
@@ -110,36 +107,32 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
         return false;
     }
 
-    // Формирование Modbus TCP запроса
+    // Запрос Modbus TCP (Read Holding Registers)
     uint8_t request[12];
     static uint16_t transaction_id = 0;
 
-    // MBAP Header
-    request[0] = (transaction_id >> 8) & 0xFF;  // Transaction ID high
-    request[1] = transaction_id & 0xFF;         // Transaction ID low
-    request[2] = 0;                             // Protocol ID high
-    request[3] = 0;                             // Protocol ID low
-    request[4] = 0;                             // Length high
-    request[5] = 6;                             // Length low
-    request[6] = 1;                             // Unit ID
+    request[0] = (transaction_id >> 8) & 0xFF;
+    request[1] = transaction_id & 0xFF;
+    request[2] = 0;
+    request[3] = 0;
+    request[4] = 0;
+    request[5] = 6;
+    request[6] = 1;
 
-    // PDU
-    request[7] = 0x03;                          // Function code (Read Holding Registers)
-    request[8] = (address >> 8) & 0xFF;         // Starting address high
-    request[9] = address & 0xFF;                // Starting address low
-    request[10] = (count >> 8) & 0xFF;          // Quantity high
-    request[11] = count & 0xFF;                 // Quantity low
+    request[7] = 0x03;
+    request[8] = (address >> 8) & 0xFF;
+    request[9] = address & 0xFF;
+    request[10] = (count >> 8) & 0xFF;
+    request[11] = count & 0xFF;
 
     transaction_id++;
 
-    // Отправка запроса
     ssize_t sent = send(socket_fd_, request, sizeof(request), 0);
     if (sent != sizeof(request)) {
         std::cerr << "Failed to send Modbus request" << std::endl;
         return false;
     }
 
-    // Получение ответа
     uint8_t response[256];
     ssize_t received = recv(socket_fd_, response, sizeof(response), 0);
     if (received < 9) {
@@ -147,7 +140,6 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
         return false;
     }
 
-    // Проверка заголовка
     if (response[7] != 0x03) {
         std::cerr << "Invalid function code in response: " << (int)response[7] << std::endl;
         return false;
@@ -159,7 +151,6 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
         return false;
     }
 
-    // Извлечение значений регистров
     for (uint16_t i = 0; i < count; i++) {
         values[i] = (response[9 + i * 2] << 8) | response[10 + i * 2];
     }

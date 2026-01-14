@@ -1,13 +1,13 @@
 #pragma once
 
 #include <libcamera/libcamera.h>
-#include <memory>
-#include <map>
 #include <functional>
+#include <map>
+#include <memory>
 
 using namespace libcamera;
 
-// Параметры конфигурации камеры
+// Конфигурация потока камеры
 struct CameraConfig {
     uint32_t width = 1012;
     uint32_t height = 760;
@@ -16,13 +16,13 @@ struct CameraConfig {
     StreamRole role = StreamRole::Viewfinder;
 };
 
-// Класс для работы с видеопотоком камеры
+// Захват видео через libcamera
 class CameraStream {
 public:
     CameraStream();
     ~CameraStream();
 
-    // Инициализация камеры с заданной конфигурацией
+    // Инициализация камеры и буферов
     bool initialize(const CameraConfig& config);
 
     // Запуск потока
@@ -31,18 +31,18 @@ public:
     // Остановка потока
     void stop();
 
-    // Получение следующего кадра (неблокирующий)
+    // Получить следующий готовый кадр (если есть)
     FrameBuffer* getNextFrame();
 
-    // Возврат кадра обратно в очередь
+    // Вернуть кадр обратно в очередь
     void returnFrame(FrameBuffer* frame);
 
-    // Получение размеров кадра
+    // Параметры текущего потока
     uint32_t getWidth() const { return width_; }
     uint32_t getHeight() const { return height_; }
     uint32_t getStride() const { return stride_; }
 
-    // Получение указателя на данные Y-plane
+    // Получить данные Y-плоскости и шаг
     uint8_t* getFrameData(FrameBuffer* frame, uint32_t& stride);
 
 private:

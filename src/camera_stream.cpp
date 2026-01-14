@@ -1,4 +1,5 @@
 #include "camera_stream.h"
+
 #include <iostream>
 #include <sys/mman.h>
 
@@ -8,7 +9,7 @@ CameraStream::CameraStream() {
 CameraStream::~CameraStream() {
     stop();
 
-    // Размапим буферы
+    // Освободить mmap буферы
     for (auto& pair : mapped_buffers_) {
         munmap(pair.second, 0);
     }
@@ -38,14 +39,14 @@ bool CameraStream::initialize(const CameraConfig& config) {
         return false;
     }
 
-    // Получение списка камер
+    // Получить список камер
     auto cameras = camera_manager_->cameras();
     if (cameras.empty()) {
         std::cerr << "No cameras available" << std::endl;
         return false;
     }
 
-    // Используем первую доступную камеру
+    // Выбрать первую камеру
     camera_ = cameras[0];
     if (camera_->acquire()) {
         std::cerr << "Failed to acquire camera" << std::endl;
@@ -54,7 +55,7 @@ bool CameraStream::initialize(const CameraConfig& config) {
 
     std::cout << "Using camera: " << camera_->id() << std::endl;
 
-    // Создание конфигурации
+    // Сформировать конфигурацию
     config_ = camera_->generateConfiguration({config.role});
     if (!config_) {
         std::cerr << "Failed to generate configuration" << std::endl;
@@ -67,7 +68,6 @@ bool CameraStream::initialize(const CameraConfig& config) {
     streamConfig.pixelFormat = PixelFormat::fromString(config.pixel_format);
     streamConfig.bufferCount = config.buffer_count;
 
-    // Валидация конфигурации
     CameraConfiguration::Status validation = config_->validate();
     if (validation == CameraConfiguration::Invalid) {
         std::cerr << "Camera configuration invalid" << std::endl;
@@ -81,18 +81,16 @@ bool CameraStream::initialize(const CameraConfig& config) {
         std::cout << "  Stride: " << streamConfig.stride << std::endl;
     }
 
-    // Применение конфигурации
     if (camera_->configure(config_.get())) {
         std::cerr << "Failed to configure camera" << std::endl;
         return false;
     }
 
-    // Сохранение параметров
     width_ = streamConfig.size.width;
     height_ = streamConfig.size.height;
     stride_ = streamConfig.stride;
 
-    // Создание аллокатора буферов
+    // Выделить буферы
     allocator_ = new FrameBufferAllocator(camera_);
     Stream *stream = streamConfig.stream();
 
@@ -104,7 +102,7 @@ bool CameraStream::initialize(const CameraConfig& config) {
 
     std::cout << "Allocated " << allocator_->buffers(stream).size() << " buffers" << std::endl;
 
-    // Создание requests и маппинг буферов
+    // Создать requests и mmap
     const std::vector<std::unique_ptr<FrameBuffer>> &buffers = allocator_->buffers(stream);
     for (unsigned int i = 0; i < buffers.size(); ++i) {
         std::unique_ptr<Request> request = camera_->createRequest();
@@ -119,7 +117,6 @@ bool CameraStream::initialize(const CameraConfig& config) {
             return false;
         }
 
-        // Мапим буфер один раз
         const FrameBuffer::Plane &plane = buffer->planes()[0];
         void *mapped = mmap(nullptr, plane.offset + plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
         if (mapped != MAP_FAILED) {
@@ -144,13 +141,11 @@ bool CameraStream::start() {
         return true;
     }
 
-    // Запуск камеры
     if (camera_->start()) {
         std::cerr << "Failed to start camera" << std::endl;
         return false;
     }
 
-    // Постановка всех requests в очередь
     for (auto &request : requests_) {
         if (camera_->queueRequest(request.get())) {
             std::cerr << "Failed to queue request" << std::endl;
@@ -182,7 +177,6 @@ FrameBuffer* CameraStream::getNextFrame() {
         return nullptr;
     }
 
-    // Проверяем завершенные requests и собираем ВСЕ завершенные
     std::vector<Request*> completed_reqs;
     for (auto &pair : pending_requests_) {
         if (pair.second->status() == Request::RequestComplete) {
@@ -194,11 +188,9 @@ FrameBuffer* CameraStream::getNextFrame() {
         return nullptr;
     }
 
-    // ВАЖНО: Берем ПОСЛЕДНИЙ (самый новый) кадр
     Request *completed_req = completed_reqs.back();
     FrameBuffer *frame = completed_req->buffers().begin()->second;
 
-    // Возвращаем старые кадры в очередь (все кроме последнего)
     for (size_t i = 0; i < completed_reqs.size() - 1; i++) {
         completed_reqs[i]->reuse(Request::ReuseBuffers);
         camera_->queueRequest(completed_reqs[i]);

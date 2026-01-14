@@ -1,26 +1,26 @@
 #include "camera_stream.h"
+#include "config.h"
 #include "hud_overlay.h"
 #include "modbus_client.h"
 
-#include <xf86drm.h>
-#include <xf86drmMode.h>
-#include <gbm.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <poll.h>
-#include <iostream>
-#include <cstring>
-#include <chrono>
+#include <gbm.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
-// GL_UNPACK_ROW_LENGTH_EXT может быть недоступно
+#include <chrono>
+#include <cstring>
+#include <fcntl.h>
+#include <iostream>
+#include <string>
+#include <unistd.h>
+
 #ifndef GL_UNPACK_ROW_LENGTH_EXT
 #define GL_UNPACK_ROW_LENGTH_EXT 0x0CF2
 #endif
 
-// Структура для DRM ресурсов
 struct DRMResources {
     int fd = -1;
     drmModeModeInfo mode;
@@ -36,7 +36,6 @@ struct DRMResources {
     EGLSurface egl_surface = EGL_NO_SURFACE;
 };
 
-// Vertex shader для видео
 const char* video_vs_src = R"(
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;
@@ -47,7 +46,6 @@ void main() {
 }
 )";
 
-// Fragment shader для видео (grayscale)
 const char* video_fs_src = R"(
 precision mediump float;
 varying vec2 vTexCoord;
@@ -59,22 +57,19 @@ void main() {
 }
 )";
 
-bool initDRM(DRMResources& drm) {
-    // Открытие DRM устройства
+static bool initDRM(DRMResources& drm) {
     drm.fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
     if (drm.fd < 0) {
         std::cerr << "Failed to open DRM device" << std::endl;
         return false;
     }
 
-    // Получение ресурсов
     drmModeRes *resources = drmModeGetResources(drm.fd);
     if (!resources) {
         std::cerr << "Failed to get DRM resources" << std::endl;
         return false;
     }
 
-    // Поиск активного коннектора
     drmModeConnector *connector = nullptr;
     for (int i = 0; i < resources->count_connectors; i++) {
         connector = drmModeGetConnector(drm.fd, resources->connectors[i]);
@@ -93,7 +88,6 @@ bool initDRM(DRMResources& drm) {
         return false;
     }
 
-    // Получение encoder и CRTC
     drmModeEncoder *encoder = drmModeGetEncoder(drm.fd, connector->encoder_id);
     if (encoder) {
         drm.crtc_id = encoder->crtc_id;
@@ -109,15 +103,13 @@ bool initDRM(DRMResources& drm) {
     return true;
 }
 
-bool initEGL(DRMResources& drm) {
-    // Создание GBM устройства
+static bool initEGL(DRMResources& drm) {
     drm.gbm_dev = gbm_create_device(drm.fd);
     if (!drm.gbm_dev) {
         std::cerr << "Failed to create GBM device" << std::endl;
         return false;
     }
 
-    // Создание GBM поверхности
     drm.gbm_surf = gbm_surface_create(drm.gbm_dev,
                                       drm.mode.hdisplay,
                                       drm.mode.vdisplay,
@@ -128,7 +120,6 @@ bool initEGL(DRMResources& drm) {
         return false;
     }
 
-    // Инициализация EGL
     drm.egl_display = eglGetDisplay((EGLNativeDisplayType)drm.gbm_dev);
     if (drm.egl_display == EGL_NO_DISPLAY) {
         std::cerr << "Failed to get EGL display" << std::endl;
@@ -140,7 +131,6 @@ bool initEGL(DRMResources& drm) {
         return false;
     }
 
-    // Выбор конфигурации
     EGLint config_attribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8,
@@ -158,7 +148,6 @@ bool initEGL(DRMResources& drm) {
         return false;
     }
 
-    // Создание контекста
     EGLint context_attribs[] = {
         EGL_CONTEXT_CLIENT_VERSION, 2,
         EGL_NONE
@@ -170,7 +159,6 @@ bool initEGL(DRMResources& drm) {
         return false;
     }
 
-    // Создание поверхности
     drm.egl_surface = eglCreateWindowSurface(drm.egl_display, egl_config,
                                              (EGLNativeWindowType)drm.gbm_surf, nullptr);
     if (drm.egl_surface == EGL_NO_SURFACE) {
@@ -178,7 +166,6 @@ bool initEGL(DRMResources& drm) {
         return false;
     }
 
-    // Активация контекста
     if (!eglMakeCurrent(drm.egl_display, drm.egl_surface, drm.egl_surface, drm.egl_context)) {
         std::cerr << "Failed to make EGL context current" << std::endl;
         return false;
@@ -188,7 +175,7 @@ bool initEGL(DRMResources& drm) {
     return true;
 }
 
-void cleanupDRM(DRMResources& drm) {
+static void cleanupDRM(DRMResources& drm) {
     if (drm.saved_crtc) {
         drmModeSetCrtc(drm.fd, drm.saved_crtc->crtc_id, drm.saved_crtc->buffer_id,
                        drm.saved_crtc->x, drm.saved_crtc->y,
@@ -219,7 +206,12 @@ void cleanupDRM(DRMResources& drm) {
 }
 
 int main() {
-    // Инициализация DRM и EGL
+    AppConfig app_config;
+    bool config_loaded = loadConfig("config.ini", app_config);
+    if (!config_loaded) {
+        std::cout << "Config file not found, using defaults" << std::endl;
+    }
+
     DRMResources drm;
     if (!initDRM(drm)) {
         return 1;
@@ -229,13 +221,12 @@ int main() {
         return 1;
     }
 
-    // Инициализация камеры
     CameraStream camera;
     CameraConfig cam_config;
-    cam_config.width = 1012;
-    cam_config.height = 760;
-    cam_config.buffer_count = 2;
-    cam_config.pixel_format = "YUV420";
+    cam_config.width = app_config.video.width;
+    cam_config.height = app_config.video.height;
+    cam_config.buffer_count = app_config.video.buffer_count;
+    cam_config.pixel_format = app_config.video.pixel_format;
 
     if (!camera.initialize(cam_config)) {
         std::cerr << "Failed to initialize camera" << std::endl;
@@ -249,7 +240,6 @@ int main() {
         return 1;
     }
 
-    // Инициализация HUD
     HUDOverlay hud;
     if (!hud.initialize(drm.mode.hdisplay, drm.mode.vdisplay)) {
         std::cerr << "Failed to initialize HUD" << std::endl;
@@ -257,30 +247,22 @@ int main() {
         return 1;
     }
 
-    // Настройка прицела
-    CrosshairConfig crosshair;
-    crosshair.enabled = true;
-    crosshair.color = Color(0.0f, 1.0f, 0.0f, 0.8f);  // Зеленый
-    crosshair.line_length = 0.05f;
-    crosshair.line_width = 2.0f;
-    hud.setCrosshairConfig(crosshair);
+    hud.setCrosshairConfig(app_config.crosshair);
+    hud.setPanelConfig(app_config.panel);
 
-    // Добавляем текстовые надписи на кириллице
-    hud.addTextPosition(TextPosition(0.02f, 0.05f, "Скорость: 120 км/ч", 0.5f, Color(1.0f, 1.0f, 0.0f, 1.0f)));
-    hud.addTextPosition(TextPosition(0.02f, 0.10f, "Высота: 250 м", 0.5f, Color(0.0f, 1.0f, 1.0f, 1.0f)));
-
-    // Инициализация Modbus клиента (опционально)
     ModbusClient modbus;
     bool use_modbus = false;
+    if (app_config.modbus.enabled) {
+        if (modbus.connect(app_config.modbus.ip, app_config.modbus.port)) {
+            for (const auto& entry : app_config.modbus.registers) {
+                modbus.registerVariable(entry.first, entry.second);
+            }
+            use_modbus = true;
+        } else {
+            std::cerr << "Modbus connect failed, running without Modbus" << std::endl;
+        }
+    }
 
-    // Раскомментируйте для использования Modbus:
-    // if (modbus.connect("192.168.1.100", 502)) {
-    //     modbus.registerVariable("speed", 0);
-    //     modbus.registerVariable("altitude", 1);
-    //     use_modbus = true;
-    // }
-
-    // Компиляция шейдеров для видео
     GLuint video_vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(video_vs, 1, &video_vs_src, nullptr);
     glCompileShader(video_vs);
@@ -297,7 +279,6 @@ int main() {
     glDeleteShader(video_vs);
     glDeleteShader(video_fs);
 
-    // Создание текстуры для видео
     GLuint video_texture;
     glGenTextures(1, &video_texture);
     glBindTexture(GL_TEXTURE_2D, video_texture);
@@ -306,7 +287,6 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Создание VBO для видео квада
     float quad_vertices[] = {
         -1.0f, -1.0f,  0.0f, 1.0f,
          1.0f, -1.0f,  1.0f, 1.0f,
@@ -319,7 +299,6 @@ int main() {
     glBindBuffer(GL_ARRAY_BUFFER, video_vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 
-    // Настройка viewport
     glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
 
     std::cout << "Starting main loop..." << std::endl;
@@ -327,11 +306,34 @@ int main() {
     auto last_time = std::chrono::steady_clock::now();
     int frame_count = 0;
     int current_fps = 0;
-    std::string fps_text = "FPS: 0";
+    std::string fps_text = "0";
 
-    // Главный цикл
+    int hud_interval_ms = app_config.hud_update_ms > 0 ? app_config.hud_update_ms : 150;
+    int modbus_interval_ms = app_config.modbus.update_ms > 0 ? app_config.modbus.update_ms : 150;
+
+    auto last_hud_update = std::chrono::steady_clock::now()
+                           - std::chrono::milliseconds(hud_interval_ms);
+    auto last_modbus_update = std::chrono::steady_clock::now()
+                              - std::chrono::milliseconds(modbus_interval_ms);
+
+    auto rebuildHudText = [&](const std::string& fps_value) {
+        hud.clearTextPositions();
+        for (const auto& item : app_config.static_texts) {
+            hud.addTextPosition(TextPosition(item.x, item.y, item.text, item.scale, item.color));
+        }
+
+        for (const auto& item : app_config.dynamic_texts) {
+            std::string text = "---";
+            if (item.name == "fps") {
+                text = fps_value;
+            } else if (use_modbus) {
+                text = modbus.getVariableString(item.name);
+            }
+            hud.addTextPosition(TextPosition(item.x, item.y, text, item.scale, item.color));
+        }
+    };
+
     while (true) {
-        // Получение кадра с камеры
         FrameBuffer* frame = camera.getNextFrame();
 
         if (frame) {
@@ -339,17 +341,14 @@ int main() {
             uint8_t* frame_data = camera.getFrameData(frame, stride);
 
             if (frame_data) {
-                // Загрузка текстуры
                 glBindTexture(GL_TEXTURE_2D, video_texture);
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
                 if (stride == camera.getWidth()) {
-                    // Stride совпадает - копируем напрямую
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                                 camera.getWidth(), camera.getHeight(), 0,
                                 GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
                 } else {
-                    // Есть padding - используем GL_UNPACK_ROW_LENGTH_EXT
                     glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride);
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                                 camera.getWidth(), camera.getHeight(), 0,
@@ -363,15 +362,42 @@ int main() {
             camera.returnFrame(frame);
         }
 
-        // Чтение Modbus данных (каждый кадр или с интервалом)
-        if (use_modbus && frame_count % 10 == 0) {
+        auto now = std::chrono::steady_clock::now();
+        if (use_modbus &&
+            now - last_modbus_update >= std::chrono::milliseconds(modbus_interval_ms)) {
             modbus.readVariables();
+            last_modbus_update = now;
         }
 
-        // Очистка буфера
+        if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
+            if (use_modbus) {
+                uint16_t raw_x = 0;
+                uint16_t raw_y = 0;
+                int16_t offset_x = 0;
+                int16_t offset_y = 0;
+                if (modbus.getVariable("crosshair_x", raw_x)) {
+                    offset_x = static_cast<int16_t>(raw_x);
+                }
+                if (modbus.getVariable("crosshair_y", raw_y)) {
+                    offset_y = static_cast<int16_t>(raw_y);
+                }
+
+                CrosshairConfig cross = app_config.crosshair;
+                cross.center_x = 0.5f + static_cast<float>(offset_x) / static_cast<float>(drm.mode.hdisplay);
+                cross.center_y = 0.5f + static_cast<float>(offset_y) / static_cast<float>(drm.mode.vdisplay);
+                if (cross.center_x < 0.0f) cross.center_x = 0.0f;
+                if (cross.center_x > 1.0f) cross.center_x = 1.0f;
+                if (cross.center_y < 0.0f) cross.center_y = 0.0f;
+                if (cross.center_y > 1.0f) cross.center_y = 1.0f;
+                hud.setCrosshairConfig(cross);
+            }
+
+            rebuildHudText(fps_text);
+            last_hud_update = now;
+        }
+
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // Отрисовка видео
         glUseProgram(video_program);
 
         glActiveTexture(GL_TEXTURE0);
@@ -392,24 +418,14 @@ int main() {
         glDisableVertexAttribArray(posLoc);
         glDisableVertexAttribArray(texLoc);
 
-        // Отрисовка HUD
         hud.render();
 
-        // Отрисовка FPS (динамически обновляемое значение)
-        // Конвертируем нормализованные координаты в пиксели
-        float fps_x = 0.70f * drm.mode.hdisplay;
-        float fps_y = 0.05f * drm.mode.vdisplay;
-        hud.renderTextDirect(fps_text, fps_x, fps_y, 0.5f, Color(1.0f, 1.0f, 1.0f, 1.0f));
-
-        // Swap буферов
         eglSwapBuffers(drm.egl_display, drm.egl_surface);
 
-        // DRM page flip для отображения на экране
         gbm_bo *bo = gbm_surface_lock_front_buffer(drm.gbm_surf);
         uint32_t fb_id;
         uint32_t handle = gbm_bo_get_handle(bo).u32;
         uint32_t pitch = gbm_bo_get_stride(bo);
-        uint32_t offset = 0;
 
         drmModeAddFB(drm.fd, drm.mode.hdisplay, drm.mode.vdisplay, 24, 32,
                      pitch, handle, &fb_id);
@@ -419,29 +435,24 @@ int main() {
 
         gbm_surface_release_buffer(drm.gbm_surf, bo);
 
-        // Подсчет FPS
         frame_count++;
-        auto current_time = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - last_time).count();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();
         if (elapsed >= 1) {
             current_fps = frame_count;
-            fps_text = "FPS: " + std::to_string(current_fps);
+            fps_text = std::to_string(current_fps);
             std::cout << "FPS: " << current_fps << std::endl;
             frame_count = 0;
-            last_time = current_time;
+            last_time = now;
         }
 
-        // Небольшая задержка для стабилизации
         usleep(1000);
     }
 
-    // Очистка
     camera.stop();
     glDeleteTextures(1, &video_texture);
     glDeleteBuffers(1, &video_vbo);
     glDeleteProgram(video_program);
 
     cleanupDRM(drm);
-
     return 0;
 }
