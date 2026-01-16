@@ -1,5 +1,6 @@
 #include "hud_overlay.h"
 
+#include <algorithm>
 #include <cmath>
 #include <codecvt>
 #include <iostream>
@@ -285,24 +286,44 @@ void HUDOverlay::setCrosshairConfig(const CrosshairConfig& config) {
     crosshair_config_ = config;
 }
 
+void HUDOverlay::setPanelConfigs(const PanelConfig& left, const PanelConfig& right) {
+    panel_left_ = left;
+    panel_right_ = right;
+}
+
 void HUDOverlay::setPanelConfig(const PanelConfig& config) {
-    panel_config_ = config;
+    panel_left_ = config;
 }
 
 void HUDOverlay::addTextPosition(const TextPosition& text_pos) {
     text_positions_.push_back(text_pos);
 }
 
+void HUDOverlay::addRectPosition(const RectPosition& rect_pos) {
+    rect_positions_.push_back(rect_pos);
+}
+
 void HUDOverlay::clearTextPositions() {
     text_positions_.clear();
+}
+
+void HUDOverlay::clearRectPositions() {
+    rect_positions_.clear();
 }
 
 void HUDOverlay::render() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    if (panel_config_.enabled) {
-        renderPanel();
+    if (panel_left_.enabled) {
+        renderPanel(panel_left_);
+    }
+    if (panel_right_.enabled) {
+        renderPanel(panel_right_);
+    }
+
+    if (!rect_positions_.empty()) {
+        renderRectangles();
     }
 
     if (crosshair_config_.enabled) {
@@ -314,20 +335,20 @@ void HUDOverlay::render() {
     glDisable(GL_BLEND);
 }
 
-void HUDOverlay::renderPanel() {
+void HUDOverlay::renderPanel(const PanelConfig& config) {
     glUseProgram(hud_program_);
 
     GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
     glUniform4f(colorLoc,
-                panel_config_.color.r,
-                panel_config_.color.g,
-                panel_config_.color.b,
-                panel_config_.color.a);
+                config.color.r,
+                config.color.g,
+                config.color.b,
+                config.color.a);
 
-    float x0 = panel_config_.x * 2.0f - 1.0f;
-    float x1 = (panel_config_.x + panel_config_.width) * 2.0f - 1.0f;
-    float y0 = panel_config_.y * 2.0f - 1.0f;
-    float y1 = (panel_config_.y + panel_config_.height) * 2.0f - 1.0f;
+    float x0 = config.x * 2.0f - 1.0f;
+    float x1 = (config.x + config.width) * 2.0f - 1.0f;
+    float y0 = config.y * 2.0f - 1.0f;
+    float y1 = (config.y + config.height) * 2.0f - 1.0f;
 
     float panel_vertices[] = {
         x0, y0,
@@ -349,6 +370,42 @@ void HUDOverlay::renderPanel() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+void HUDOverlay::renderRectangles() {
+    glUseProgram(hud_program_);
+
+    GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
+    GLint posLoc = glGetAttribLocation(hud_program_, "aPos");
+    glEnableVertexAttribArray(posLoc);
+
+    for (const auto& rect : rect_positions_) {
+        glUniform4f(colorLoc,
+                    rect.color.r,
+                    rect.color.g,
+                    rect.color.b,
+                    rect.color.a);
+
+        float x0 = rect.x * 2.0f - 1.0f;
+        float x1 = (rect.x + rect.width) * 2.0f - 1.0f;
+        float y0 = rect.y * 2.0f - 1.0f;
+        float y1 = (rect.y + rect.height) * 2.0f - 1.0f;
+
+        float vertices[] = {
+            x0, y0,
+            x1, y0,
+            x0, y1,
+            x1, y1
+        };
+
+        glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+
+    glDisableVertexAttribArray(posLoc);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 void HUDOverlay::renderCrosshair() {
     glUseProgram(hud_program_);
 
@@ -365,35 +422,87 @@ void HUDOverlay::renderCrosshair() {
     float len = crosshair_config_.line_length;
     float gap = crosshair_config_.gap;
 
-    float h_line[] = {
-        cx - len - gap, cy,
-        cx - gap, cy,
-        cx + gap, cy,
-        cx + len + gap, cy
-    };
-
-    float v_line[] = {
-        cx, cy - len - gap,
-        cx, cy - gap,
-        cx, cy + gap,
-        cx, cy + len + gap
-    };
-
     glLineWidth(crosshair_config_.line_width);
 
     glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
-
     GLint posLoc = glGetAttribLocation(hud_program_, "aPos");
     glEnableVertexAttribArray(posLoc);
     glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glDrawArrays(GL_LINES, 0, 2);
-    glDrawArrays(GL_LINES, 2, 2);
+    auto appendLine = [](std::vector<float>& verts, float x0, float y0, float x1, float y1) {
+        verts.push_back(x0);
+        verts.push_back(y0);
+        verts.push_back(x1);
+        verts.push_back(y1);
+    };
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(v_line), v_line, GL_DYNAMIC_DRAW);
-    glDrawArrays(GL_LINES, 0, 2);
-    glDrawArrays(GL_LINES, 2, 2);
+    auto addDashedLine = [&](std::vector<float>& verts, float x0, float y0, float x1, float y1,
+                             float dash_len, float dash_gap) {
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float length = std::sqrt(dx * dx + dy * dy);
+        if (length <= 0.0001f) {
+            return;
+        }
+        float ux = dx / length;
+        float uy = dy / length;
+        float t = 0.0f;
+        while (t < length) {
+            float seg = std::min(dash_len, length - t);
+            float sx = x0 + ux * t;
+            float sy = y0 + uy * t;
+            float ex = x0 + ux * (t + seg);
+            float ey = y0 + uy * (t + seg);
+            appendLine(verts, sx, sy, ex, ey);
+            t += dash_len + dash_gap;
+        }
+    };
+
+    std::vector<float> verts;
+    if (crosshair_config_.line_style == 0) {
+        float h_line[] = {
+            cx - len - gap, cy,
+            cx - gap, cy,
+            cx + gap, cy,
+            cx + len + gap, cy
+        };
+
+        float top = 1.0f;
+        float bottom = -1.0f;
+        float v_line[] = {
+            cx, top,
+            cx, cy + gap,
+            cx, cy - gap,
+            cx, bottom
+        };
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_LINES, 0, 2);
+        glDrawArrays(GL_LINES, 2, 2);
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof(v_line), v_line, GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_LINES, 0, 2);
+        glDrawArrays(GL_LINES, 2, 2);
+    } else {
+        float dash_len = std::max(0.001f, crosshair_config_.dash_length);
+        float dash_gap = std::max(0.0f, crosshair_config_.dash_gap);
+        addDashedLine(verts, cx - len - gap, cy, cx - gap, cy, dash_len, dash_gap);
+        addDashedLine(verts, cx + gap, cy, cx + len + gap, cy, dash_len, dash_gap);
+
+        float top = 1.0f;
+        float bottom = -1.0f;
+        if (cy + gap < top) {
+            addDashedLine(verts, cx, top, cx, cy + gap, dash_len, dash_gap);
+        }
+        if (cy - gap > bottom) {
+            addDashedLine(verts, cx, cy - gap, cx, bottom, dash_len, dash_gap);
+        }
+
+        if (!verts.empty()) {
+            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verts.size(), verts.data(), GL_DYNAMIC_DRAW);
+            glDrawArrays(GL_LINES, 0, static_cast<GLint>(verts.size() / 2));
+        }
+    }
 
     glDisableVertexAttribArray(posLoc);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -415,7 +524,6 @@ void HUDOverlay::renderText() {
 void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
                                   float scale, const Color& color) {
     if (characters_.empty()) {
-        std::cerr << "renderTextDirect: No characters loaded!" << std::endl;
         return;
     }
 
@@ -452,32 +560,17 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
     try {
         unicode_text = converter.from_bytes(text);
     } catch (...) {
-        std::cerr << "renderTextDirect: UTF-8 conversion failed for text: " << text << std::endl;
         if (!blend_enabled) {
             glDisable(GL_BLEND);
         }
         return;
     }
 
-    static bool first_call = true;
-    if (first_call) {
-        std::cout << "renderTextDirect: text='" << text << "' unicode_len=" << unicode_text.size()
-                  << " pos=(" << x << "," << y << ") scale=" << scale << std::endl;
-        first_call = false;
-    }
-
     for (char32_t c : unicode_text) {
         auto it = characters_.find(c);
         if (it == characters_.end()) {
             static int load_count = 0;
-            if (load_count < 10) {
-                std::cout << "Loading glyph dynamically: U+" << std::hex << c << std::dec
-                          << " ('" << (char)(c < 128 ? c : '?') << "')" << std::endl;
-                load_count++;
-            }
-
             if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
-                std::cerr << "Failed to load glyph U+" << std::hex << c << std::dec << std::endl;
                 continue;
             }
 

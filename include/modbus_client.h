@@ -19,10 +19,18 @@ struct ModbusVariable {
 // Modbus TCP клиент на libmodbus
 class ModbusClient {
 public:
+    enum class RegisterType {
+        Holding,
+        Input
+    };
+
     ModbusClient();
     ~ModbusClient();
 
     void setUnitId(uint8_t unit_id);
+    void setRegisterType(RegisterType type);
+    void setRegisterType(const std::string& type);
+    void setDebug(bool enable);
 
     // Подключение к серверу Modbus TCP
     bool connect(const std::string& ip, uint16_t port = 502);
@@ -53,6 +61,8 @@ private:
     std::string server_ip_;
     uint16_t server_port_;
     uint8_t unit_id_;
+    RegisterType register_type_ = RegisterType::Holding;
+    bool debug_ = false;
 
     mutable std::mutex ctx_mutex_;
     mutable std::mutex variables_mutex_;

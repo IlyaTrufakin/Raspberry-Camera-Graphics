@@ -1,5 +1,7 @@
 #include "modbus_client.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <iostream>
 #include <limits>
@@ -20,6 +22,28 @@ void ModbusClient::setUnitId(uint8_t unit_id) {
     unit_id_ = unit_id;
 }
 
+void ModbusClient::setRegisterType(RegisterType type) {
+    register_type_ = type;
+}
+
+void ModbusClient::setRegisterType(const std::string& type) {
+    std::string v = type;
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (v == "input") {
+        register_type_ = RegisterType::Input;
+    } else if (v == "holding") {
+        register_type_ = RegisterType::Holding;
+    }
+}
+
+void ModbusClient::setDebug(bool enable) {
+    debug_ = enable;
+    if (ctx_) {
+        modbus_set_debug(ctx_, debug_ ? 1 : 0);
+    }
+}
+
 bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     if (connected_) {
         disconnect();
@@ -33,6 +57,8 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
         std::cerr << "Failed to create Modbus context" << std::endl;
         return false;
     }
+
+    modbus_set_debug(ctx_, debug_ ? 1 : 0);
 
     if (modbus_set_slave(ctx_, unit_id_) == -1) {
         std::cerr << "Failed to set Modbus unit id " << static_cast<int>(unit_id_)
@@ -161,10 +187,19 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
     }
 
     std::lock_guard<std::mutex> lock(ctx_mutex_);
-    int rc = modbus_read_registers(ctx_, address, count, values);
+    int rc = 0;
+    int func = 0;
+    if (register_type_ == RegisterType::Input) {
+        rc = modbus_read_input_registers(ctx_, address, count, values);
+        func = 4;
+    } else {
+        rc = modbus_read_registers(ctx_, address, count, values);
+        func = 3;
+    }
     if (rc != count) {
         std::cerr << "Modbus read failed: addr=" << address
                   << " count=" << count
+                  << " func=" << func
                   << " error=" << modbus_strerror(errno) << std::endl;
         return false;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -22,6 +23,14 @@ struct StaticTextConfig {
     std::string text;
 };
 
+struct StaticRectConfig {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    Color color = Color(1.0f, 1.0f, 1.0f, 1.0f);
+};
+
 struct DynamicTextConfig {
     std::string name;
     float x = 0.0f;
@@ -30,22 +39,83 @@ struct DynamicTextConfig {
     Color color = Color(1.0f, 1.0f, 1.0f, 1.0f);
 };
 
+struct StatusBitConfig {
+    std::string name;
+    uint8_t bit = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    Color color_on = Color(0.0f, 1.0f, 0.0f, 1.0f);
+    Color color_off = Color(1.0f, 0.0f, 0.0f, 0.5f);
+};
+
 struct ModbusSettings {
     bool enabled = false;
     std::string ip = "192.168.0.78";
     uint16_t port = 502;
     uint8_t unit_id = 1;
     int update_ms = 150;
+    std::string register_type = "holding";
+    bool debug = false;
     std::map<std::string, uint16_t> registers;
+};
+
+struct CameraSettings {
+    bool ae_enable = true;
+    bool awb_enable = true;
+    bool controls_dump = false;
+    int exposure_time_us = 0;
+    float analogue_gain = 0.0f;
+    float brightness = 0.0f;
+    float contrast = 0.0f;
+    float saturation = 0.0f;
+    float sharpness = 0.0f;
+    float exposure_compensation = 0.0f;
+    int frame_duration_us = 0;
+    int ae_metering = -1;
+    int ae_constraint = -1;
+    int ae_exposure_mode = -1;
+    int awb_mode = -1;
+    int ae_flicker_mode = -1;
+    int exposure_time_mode = -1;
+    int analogue_gain_mode = -1;
+    int noise_reduction_mode = -1;
+    int hdr_mode = -1;
+    int sync_mode = -1;
+    int sync_frames = -1;
+    int colour_temperature = -1;
+    int ae_flicker_period = -1;
+    int stats_output_enable = -1;
+    int cnn_enable_input_tensor = -1;
+    std::array<float, 2> colour_gains = {0.0f, 0.0f};
+    bool colour_gains_set = false;
+    std::array<float, 9> colour_correction_matrix = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    bool colour_correction_matrix_set = false;
+};
+
+struct RoiConfig {
+    bool enabled = false;
+    bool auto_fit = false;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 1.0f;
+    float height = 1.0f;
 };
 
 struct AppConfig {
     VideoConfig video;
+    CameraSettings camera;
     CrosshairConfig crosshair;
-    PanelConfig panel;
+    PanelConfig panel_left;
+    PanelConfig panel_right;
+    RoiConfig roi;
     int hud_update_ms = 150;
+    std::string hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
     std::vector<StaticTextConfig> static_texts;
+    std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;
+    std::vector<StatusBitConfig> status_bits;
     ModbusSettings modbus;
 };
 

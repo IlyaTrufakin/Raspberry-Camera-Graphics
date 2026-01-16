@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
+#include <cmath>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -47,14 +48,32 @@ void main() {
 }
 )";
 
-const char* video_fs_src = R"(
+const char* video_fs_src_yuv = R"(
 precision mediump float;
 varying vec2 vTexCoord;
-uniform sampler2D uTextureY;
+uniform sampler2D uTexY;
+uniform sampler2D uTexU;
+uniform sampler2D uTexV;
 
 void main() {
-    float y = texture2D(uTextureY, vTexCoord).r;
-    gl_FragColor = vec4(y, y, y, 1.0);
+    float y = texture2D(uTexY, vTexCoord).r;
+    float u = texture2D(uTexU, vTexCoord).r - 0.5;
+    float v = texture2D(uTexV, vTexCoord).r - 0.5;
+    float r = y + 1.402 * v;
+    float g = y - 0.344136 * u - 0.714136 * v;
+    float b = y + 1.772 * u;
+    gl_FragColor = vec4(r, g, b, 1.0);
+}
+)";
+
+const char* video_fs_src_rgb = R"(
+precision mediump float;
+varying vec2 vTexCoord;
+uniform sampler2D uTexture;
+
+void main() {
+    vec3 rgb = texture2D(uTexture, vTexCoord).rgb;
+    gl_FragColor = vec4(rgb, 1.0);
 }
 )";
 
@@ -228,6 +247,69 @@ int main() {
     cam_config.height = app_config.video.height;
     cam_config.buffer_count = app_config.video.buffer_count;
     cam_config.pixel_format = app_config.video.pixel_format;
+    cam_config.ae_enable = app_config.camera.ae_enable;
+    cam_config.awb_enable = app_config.camera.awb_enable;
+    cam_config.controls_dump = app_config.camera.controls_dump;
+    cam_config.exposure_time_us = app_config.camera.exposure_time_us;
+    cam_config.analogue_gain = app_config.camera.analogue_gain;
+    cam_config.brightness = app_config.camera.brightness;
+    cam_config.contrast = app_config.camera.contrast;
+    cam_config.saturation = app_config.camera.saturation;
+    cam_config.sharpness = app_config.camera.sharpness;
+    cam_config.exposure_compensation = app_config.camera.exposure_compensation;
+    cam_config.frame_duration_us = app_config.camera.frame_duration_us;
+    cam_config.ae_metering = app_config.camera.ae_metering;
+    cam_config.ae_constraint = app_config.camera.ae_constraint;
+    cam_config.ae_exposure_mode = app_config.camera.ae_exposure_mode;
+    cam_config.awb_mode = app_config.camera.awb_mode;
+    cam_config.ae_flicker_mode = app_config.camera.ae_flicker_mode;
+    cam_config.exposure_time_mode = app_config.camera.exposure_time_mode;
+    cam_config.analogue_gain_mode = app_config.camera.analogue_gain_mode;
+    cam_config.noise_reduction_mode = app_config.camera.noise_reduction_mode;
+    cam_config.hdr_mode = app_config.camera.hdr_mode;
+    cam_config.sync_mode = app_config.camera.sync_mode;
+    cam_config.sync_frames = app_config.camera.sync_frames;
+    cam_config.colour_temperature = app_config.camera.colour_temperature;
+    cam_config.ae_flicker_period = app_config.camera.ae_flicker_period;
+    cam_config.stats_output_enable = app_config.camera.stats_output_enable;
+    cam_config.cnn_enable_input_tensor = app_config.camera.cnn_enable_input_tensor;
+    cam_config.colour_gains = app_config.camera.colour_gains;
+    cam_config.colour_gains_set = app_config.camera.colour_gains_set;
+    cam_config.colour_correction_matrix = app_config.camera.colour_correction_matrix;
+    cam_config.colour_correction_matrix_set = app_config.camera.colour_correction_matrix_set;
+    cam_config.roi_enabled = app_config.roi.enabled;
+    cam_config.roi_x = app_config.roi.x;
+    cam_config.roi_y = app_config.roi.y;
+    cam_config.roi_width = app_config.roi.width;
+    cam_config.roi_height = app_config.roi.height;
+    cam_config.roi_auto = app_config.roi.auto_fit;
+    if (app_config.roi.auto_fit) {
+        float left_edge = 0.0f;
+        float right_edge = 1.0f;
+        if (app_config.panel_left.enabled) {
+            left_edge = std::min(1.0f, std::max(0.0f, app_config.panel_left.x + app_config.panel_left.width));
+        }
+        if (app_config.panel_right.enabled) {
+            right_edge = std::min(1.0f, std::max(0.0f, app_config.panel_right.x));
+        }
+        if (right_edge > left_edge) {
+            float center_width = right_edge - left_edge;
+            cam_config.roi_target_aspect =
+                (center_width * static_cast<float>(drm.mode.hdisplay)) / static_cast<float>(drm.mode.vdisplay);
+        }
+    }
+
+    if (cam_config.roi_auto && cam_config.roi_target_aspect > 0.0f) {
+        float target_aspect = cam_config.roi_target_aspect;
+        int new_width = static_cast<int>(std::round(static_cast<float>(cam_config.height) * target_aspect));
+        if (new_width < 2) {
+            new_width = 2;
+        }
+        new_width &= ~1;
+        if (new_width > 0) {
+            cam_config.width = static_cast<uint32_t>(new_width);
+        }
+    }
 
     if (!camera.initialize(cam_config)) {
         std::cerr << "Failed to initialize camera" << std::endl;
@@ -242,19 +324,21 @@ int main() {
     }
 
     HUDOverlay hud;
-    if (!hud.initialize(drm.mode.hdisplay, drm.mode.vdisplay)) {
+    if (!hud.initialize(drm.mode.hdisplay, drm.mode.vdisplay, app_config.hud_font_path)) {
         std::cerr << "Failed to initialize HUD" << std::endl;
         cleanupDRM(drm);
         return 1;
     }
 
     hud.setCrosshairConfig(app_config.crosshair);
-    hud.setPanelConfig(app_config.panel);
+    hud.setPanelConfigs(app_config.panel_left, app_config.panel_right);
 
     ModbusClient modbus;
     bool use_modbus = false;
     if (app_config.modbus.enabled) {
         modbus.setUnitId(app_config.modbus.unit_id);
+        modbus.setRegisterType(app_config.modbus.register_type);
+        modbus.setDebug(app_config.modbus.debug);
         if (modbus.connect(app_config.modbus.ip, app_config.modbus.port)) {
             for (const auto& entry : app_config.modbus.registers) {
                 modbus.registerVariable(entry.first, entry.second);
@@ -281,8 +365,22 @@ int main() {
     glShaderSource(video_vs, 1, &video_vs_src, nullptr);
     glCompileShader(video_vs);
 
+    bool use_rgb = false;
+    bool use_yuv = false;
+    if (app_config.video.pixel_format == "RGB888" ||
+        app_config.video.pixel_format == "XRGB8888" ||
+        app_config.video.pixel_format == "ARGB8888") {
+        use_rgb = true;
+    } else if (app_config.video.pixel_format == "YUV420") {
+        use_yuv = true;
+    }
+
     GLuint video_fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(video_fs, 1, &video_fs_src, nullptr);
+    if (use_rgb) {
+        glShaderSource(video_fs, 1, &video_fs_src_rgb, nullptr);
+    } else {
+        glShaderSource(video_fs, 1, &video_fs_src_yuv, nullptr);
+    }
     glCompileShader(video_fs);
 
     GLuint video_program = glCreateProgram();
@@ -293,19 +391,44 @@ int main() {
     glDeleteShader(video_vs);
     glDeleteShader(video_fs);
 
-    GLuint video_texture;
-    glGenTextures(1, &video_texture);
-    glBindTexture(GL_TEXTURE_2D, video_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    GLuint video_textures[3] = {0, 0, 0};
+    glGenTextures(use_yuv ? 3 : 1, video_textures);
+    int texture_count = use_yuv ? 3 : 1;
+    for (int i = 0; i < texture_count; ++i) {
+        glBindTexture(GL_TEXTURE_2D, video_textures[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
+    auto clamp01 = [](float v) {
+        if (v < 0.0f) return 0.0f;
+        if (v > 1.0f) return 1.0f;
+        return v;
+    };
+
+    float left_edge = 0.0f;
+    float right_edge = 1.0f;
+    if (app_config.panel_left.enabled) {
+        left_edge = clamp01(app_config.panel_left.x + app_config.panel_left.width);
+    }
+    if (app_config.panel_right.enabled) {
+        right_edge = clamp01(app_config.panel_right.x);
+    }
+    if (right_edge <= left_edge) {
+        left_edge = 0.0f;
+        right_edge = 1.0f;
+    }
+
+    float x0 = left_edge * 2.0f - 1.0f;
+    float x1 = right_edge * 2.0f - 1.0f;
 
     float quad_vertices[] = {
-        -1.0f, -1.0f,  0.0f, 1.0f,
-         1.0f, -1.0f,  1.0f, 1.0f,
-        -1.0f,  1.0f,  0.0f, 0.0f,
-         1.0f,  1.0f,  1.0f, 0.0f
+        x0, -1.0f,  0.0f, 1.0f,
+        x1, -1.0f,  1.0f, 1.0f,
+        x0,  1.0f,  0.0f, 0.0f,
+        x1,  1.0f,  1.0f, 0.0f
     };
 
     GLuint video_vbo;
@@ -330,8 +453,13 @@ int main() {
 
     auto rebuildHudText = [&](const std::string& fps_value) {
         hud.clearTextPositions();
+        hud.clearRectPositions();
         for (const auto& item : app_config.static_texts) {
             hud.addTextPosition(TextPosition(item.x, item.y, item.text, item.scale, item.color));
+        }
+
+        for (const auto& rect : app_config.static_rects) {
+            hud.addRectPosition(RectPosition{rect.x, rect.y, rect.width, rect.height, rect.color});
         }
 
         for (const auto& item : app_config.dynamic_texts) {
@@ -348,6 +476,20 @@ int main() {
             }
             hud.addTextPosition(TextPosition(item.x, item.y, text, item.scale, item.color));
         }
+
+        if (use_modbus) {
+            for (const auto& bit_cfg : app_config.status_bits) {
+                uint16_t value = 0;
+                bool ok = modbus.getVariable(bit_cfg.name, value);
+                bool bit_on = false;
+                if (ok) {
+                    bit_on = ((value >> bit_cfg.bit) & 0x1) != 0;
+                }
+                Color c = bit_on ? bit_cfg.color_on : bit_cfg.color_off;
+                hud.addRectPosition(RectPosition{bit_cfg.x, bit_cfg.y,
+                                                 bit_cfg.width, bit_cfg.height, c});
+            }
+        }
     };
 
     while (true) {
@@ -357,31 +499,80 @@ int main() {
             uint32_t stride;
             uint8_t* frame_data = camera.getFrameData(frame, stride);
 
-            if (frame_data) {
-                glBindTexture(GL_TEXTURE_2D, video_texture);
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        if (frame_data) {
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-                if (stride == camera.getWidth()) {
+            if (use_yuv) {
+                CameraStream::PlaneData py, pu, pv;
+                if (camera.getFramePlanes(frame, py, pu, pv)) {
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, video_textures[0]);
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(py.stride));
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                                camera.getWidth(), camera.getHeight(), 0,
-                                GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
-                } else {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride);
+                                 py.width, py.height, 0,
+                                 GL_LUMINANCE, GL_UNSIGNED_BYTE, py.data);
+
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, video_textures[1]);
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(pu.stride));
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                                camera.getWidth(), camera.getHeight(), 0,
-                                GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
+                                 pu.width, pu.height, 0,
+                                 GL_LUMINANCE, GL_UNSIGNED_BYTE, pu.data);
+
+                    glActiveTexture(GL_TEXTURE2);
+                    glBindTexture(GL_TEXTURE_2D, video_textures[2]);
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(pv.stride));
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                                 pv.width, pv.height, 0,
+                                 GL_LUMINANCE, GL_UNSIGNED_BYTE, pv.data);
+
                     glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
                 }
+            } else {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, video_textures[0]);
 
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                GLenum format = use_rgb ? GL_RGB : GL_LUMINANCE;
+                GLenum internal_format = use_rgb ? GL_RGB : GL_LUMINANCE;
+                int bytes_per_pixel = 1;
+                if (use_rgb) {
+                    if (app_config.video.pixel_format == "XRGB8888" ||
+                        app_config.video.pixel_format == "ARGB8888") {
+                        format = GL_BGRA_EXT;
+                        internal_format = GL_RGBA;
+                        bytes_per_pixel = 4;
+                    } else {
+                        bytes_per_pixel = 3;
+                    }
+                }
+
+                int row_pixels = camera.getWidth();
+                if (stride > 0 && bytes_per_pixel > 0) {
+                    row_pixels = static_cast<int>(stride / bytes_per_pixel);
+                }
+
+                if (row_pixels == static_cast<int>(camera.getWidth())) {
+                    glTexImage2D(GL_TEXTURE_2D, 0, internal_format,
+                                 camera.getWidth(), camera.getHeight(), 0,
+                                 format, GL_UNSIGNED_BYTE, frame_data);
+                } else {
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, row_pixels);
+                    glTexImage2D(GL_TEXTURE_2D, 0, internal_format,
+                                 camera.getWidth(), camera.getHeight(), 0,
+                                 format, GL_UNSIGNED_BYTE, frame_data);
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
+                }
             }
+
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        }
 
             camera.returnFrame(frame);
         }
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
-            if (use_modbus) {
+            if (use_modbus && app_config.crosshair.modbus_override) {
                 uint16_t raw_x = 0;
                 uint16_t raw_y = 0;
                 if (modbus.getVariable("crosshair_x", raw_x)) {
@@ -409,9 +600,23 @@ int main() {
 
         glUseProgram(video_program);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, video_texture);
-        glUniform1i(glGetUniformLocation(video_program, "uTextureY"), 0);
+        if (use_yuv) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, video_textures[0]);
+            glUniform1i(glGetUniformLocation(video_program, "uTexY"), 0);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, video_textures[1]);
+            glUniform1i(glGetUniformLocation(video_program, "uTexU"), 1);
+
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, video_textures[2]);
+            glUniform1i(glGetUniformLocation(video_program, "uTexV"), 2);
+        } else {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, video_textures[0]);
+            glUniform1i(glGetUniformLocation(video_program, use_rgb ? "uTexture" : "uTexY"), 0);
+        }
 
         glBindBuffer(GL_ARRAY_BUFFER, video_vbo);
         GLint posLoc = glGetAttribLocation(video_program, "aPosition");
@@ -449,7 +654,6 @@ int main() {
         if (elapsed >= 1) {
             current_fps = frame_count;
             fps_text = std::to_string(current_fps);
-            std::cout << "FPS: " << current_fps << std::endl;
             frame_count = 0;
             last_time = now;
         }
@@ -458,7 +662,7 @@ int main() {
     }
 
     camera.stop();
-    glDeleteTextures(1, &video_texture);
+    glDeleteTextures(use_yuv ? 3 : 1, video_textures);
     glDeleteBuffers(1, &video_vbo);
     glDeleteProgram(video_program);
 

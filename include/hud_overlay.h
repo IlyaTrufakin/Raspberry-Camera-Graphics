@@ -31,12 +31,16 @@ struct TextPosition {
 // Параметры прицела/центра
 struct CrosshairConfig {
     bool enabled = true;
-    Color color = Color(0.0f, 1.0f, 0.0f, 0.8f);  // Цвет линий
-    float center_x = 0.5f;  // Центр по X (0..1)
-    float center_y = 0.5f;  // Центр по Y (0..1)
-    float line_length = 0.05f;  // Длина линии
-    float line_width = 2.0f;  // Толщина линии
-    float gap = 0.01f;  // Разрыв в центре
+    Color color = Color(0.0f, 1.0f, 0.0f, 0.8f);
+    float center_x = 0.5f;
+    float center_y = 0.5f;
+    float line_length = 0.05f;
+    float line_width = 2.0f;
+    float gap = 0.01f;
+    int line_style = 0;
+    float dash_length = 0.05f;
+    float dash_gap = 0.03f;
+    bool modbus_override = true;
 };
 
 // Фоновая панель для текста (нормализованные координаты)
@@ -47,6 +51,14 @@ struct PanelConfig {
     float width = 0.25f;
     float height = 1.0f;
     Color color = Color(0.0f, 0.0f, 0.0f, 0.4f);
+};
+
+struct RectPosition {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    Color color = Color(1.0f, 1.0f, 1.0f, 1.0f);
 };
 
 // Символ шрифта (текстурированный глиф)
@@ -72,13 +84,16 @@ public:
     // Параметры перекрестия
     void setCrosshairConfig(const CrosshairConfig& config);
 
+    void setPanelConfigs(const PanelConfig& left, const PanelConfig& right);
     void setPanelConfig(const PanelConfig& config);
 
     // Добавить строку текста
     void addTextPosition(const TextPosition& text_pos);
+    void addRectPosition(const RectPosition& rect_pos);
 
     // Очистить список текстовых строк
     void clearTextPositions();
+    void clearRectPositions();
 
     // Отрисовка HUD
     void render();
@@ -88,7 +103,8 @@ public:
 
 private:
     void renderCrosshair();
-    void renderPanel();
+    void renderPanel(const PanelConfig& config);
+    void renderRectangles();
     void renderText();
     void compileShader(const char* source, GLenum type, GLuint& shader);
     void linkProgram(GLuint vertex, GLuint fragment, GLuint& program);
@@ -98,8 +114,10 @@ private:
     uint32_t display_height_;
 
     CrosshairConfig crosshair_config_;
-    PanelConfig panel_config_;
+    PanelConfig panel_left_;
+    PanelConfig panel_right_;
     std::vector<TextPosition> text_positions_;
+    std::vector<RectPosition> rect_positions_;
 
     GLuint hud_program_;
     GLuint text_program_;
@@ -111,3 +129,4 @@ private:
     FT_Face ft_face_;
     std::map<uint32_t, Character> characters_;  // Кеш глифов (Unicode)
 };
+

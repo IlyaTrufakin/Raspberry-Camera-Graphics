@@ -22,7 +22,7 @@ $(SRC_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(SRC_DIR)/*.o $(TARGET)
 
 run: $(TARGET)
 	sudo ./$(TARGET)
