@@ -1,11 +1,16 @@
 #include "modbus_client.h"
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <cctype>
 #include <cerrno>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <sstream>
+#include <thread>
 #include <vector>
 
 #include <modbus/modbus.h>
@@ -44,6 +49,53 @@ void ModbusClient::setDebug(bool enable) {
     }
 }
 
+void ModbusClient::setAddressOffset(int offset) {
+    address_offset_ = offset;
+}
+
+void ModbusClient::setBlockRead(bool enable) {
+    block_read_ = enable;
+}
+
+void ModbusClient::setResponseTimeoutMs(int timeout_ms) {
+    response_timeout_ms_ = timeout_ms;
+    if (ctx_) {
+        modbus_set_response_timeout(ctx_, response_timeout_ms_ / 1000,
+                                    (response_timeout_ms_ % 1000) * 1000);
+    }
+}
+
+void ModbusClient::setByteTimeoutMs(int timeout_ms) {
+    byte_timeout_ms_ = timeout_ms;
+    if (ctx_) {
+        modbus_set_byte_timeout(ctx_, byte_timeout_ms_ / 1000,
+                                (byte_timeout_ms_ % 1000) * 1000);
+    }
+}
+
+void ModbusClient::setInterRequestDelayMs(int delay_ms) {
+    inter_request_delay_ms_ = delay_ms;
+}
+
+void ModbusClient::setLogTimestamps(bool enable) {
+    log_timestamps_ = enable;
+}
+
+static std::string formatTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%H:%M:%S") << "." << std::setw(3) << std::setfill('0') << ms.count();
+    return oss.str();
+}
+
 bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     if (connected_) {
         disconnect();
@@ -55,6 +107,7 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     ctx_ = modbus_new_tcp(server_ip_.c_str(), server_port_);
     if (!ctx_) {
         std::cerr << "Failed to create Modbus context" << std::endl;
+        last_errno_ = errno;
         return false;
     }
 
@@ -63,23 +116,28 @@ bool ModbusClient::connect(const std::string& ip, uint16_t port) {
     if (modbus_set_slave(ctx_, unit_id_) == -1) {
         std::cerr << "Failed to set Modbus unit id " << static_cast<int>(unit_id_)
                   << " error=" << modbus_strerror(errno) << std::endl;
+        last_errno_ = errno;
         modbus_free(ctx_);
         ctx_ = nullptr;
         return false;
     }
 
-    modbus_set_response_timeout(ctx_, 0, 200000);
-    modbus_set_byte_timeout(ctx_, 0, 200000);
+    modbus_set_response_timeout(ctx_, response_timeout_ms_ / 1000,
+                                (response_timeout_ms_ % 1000) * 1000);
+    modbus_set_byte_timeout(ctx_, byte_timeout_ms_ / 1000,
+                            (byte_timeout_ms_ % 1000) * 1000);
 
     if (modbus_connect(ctx_) == -1) {
         std::cerr << "Failed to connect to " << server_ip_ << ":" << server_port_
                   << " error=" << modbus_strerror(errno) << std::endl;
+        last_errno_ = errno;
         modbus_free(ctx_);
         ctx_ = nullptr;
         return false;
     }
 
     connected_ = true;
+    last_errno_ = 0;
     std::cout << "Connected to Modbus TCP server " << server_ip_ << ":" << server_port_ << std::endl;
     return true;
 }
@@ -125,7 +183,7 @@ bool ModbusClient::readVariables() {
     }
 
     uint16_t count = static_cast<uint16_t>(max_addr - min_addr + 1);
-    if (count > 0 && count <= 125) {
+    if (block_read_ && count > 0 && count <= 125) {
         std::vector<uint16_t> values(count, 0);
         if (readHoldingRegisters(min_addr, count, values.data())) {
             std::lock_guard<std::mutex> lock(variables_mutex_);
@@ -157,6 +215,9 @@ bool ModbusClient::readVariables() {
             }
             any_ok = true;
         }
+        if (inter_request_delay_ms_ > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(inter_request_delay_ms_));
+        }
     }
 
     return any_ok;
@@ -183,26 +244,71 @@ std::string ModbusClient::getVariableString(const std::string& name) {
 
 bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16_t* values) {
     if (!connected_ || count == 0 || count > 125) {
+        if (!connected_) {
+            last_errno_ = ENOTCONN;
+        }
         return false;
+    }
+
+    uint16_t read_address = address;
+    if (address_offset_ != 0) {
+        int adjusted = static_cast<int>(address) + address_offset_;
+        if (adjusted < 0 || adjusted > std::numeric_limits<uint16_t>::max()) {
+            last_errno_ = ERANGE;
+            return false;
+        }
+        read_address = static_cast<uint16_t>(adjusted);
     }
 
     std::lock_guard<std::mutex> lock(ctx_mutex_);
     int rc = 0;
     int func = 0;
     if (register_type_ == RegisterType::Input) {
-        rc = modbus_read_input_registers(ctx_, address, count, values);
+        rc = modbus_read_input_registers(ctx_, read_address, count, values);
         func = 4;
     } else {
-        rc = modbus_read_registers(ctx_, address, count, values);
+        rc = modbus_read_registers(ctx_, read_address, count, values);
         func = 3;
     }
     if (rc != count) {
+        if (log_timestamps_) {
+            std::cerr << "[" << formatTimestamp() << "] ";
+        }
         std::cerr << "Modbus read failed: addr=" << address
                   << " count=" << count
                   << " func=" << func
                   << " error=" << modbus_strerror(errno) << std::endl;
+        last_errno_ = errno;
+        if (last_errno_ == ETIMEDOUT) {
+            modbus_flush(ctx_);
+        }
         return false;
     }
 
+    if (log_timestamps_) {
+        std::cout << "[" << formatTimestamp() << "] "
+                  << "Modbus read ok: addr=" << address
+                  << " count=" << count
+                  << " func=" << func << std::endl;
+    }
+    last_errno_ = 0;
     return true;
+}
+
+bool ModbusClient::lastErrorIsConnection() const {
+    int err = last_errno_;
+    if (err == 0) {
+        return false;
+    }
+    if (err >= MODBUS_ENOBASE) {
+        return false;
+    }
+    return err == ETIMEDOUT ||
+           err == ECONNRESET ||
+           err == EPIPE ||
+           err == ECONNABORTED ||
+           err == ENOTCONN ||
+           err == ECONNREFUSED ||
+           err == EHOSTUNREACH ||
+           err == ENETUNREACH;
 }

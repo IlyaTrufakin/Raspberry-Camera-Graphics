@@ -13,6 +13,9 @@ struct VideoConfig {
     uint32_t height = 760;
     uint32_t buffer_count = 2;
     std::string pixel_format = "YUV420";
+    bool flip_horizontal = false;
+    bool flip_vertical = false;
+    int rotate = 0; // 0, 90, 180, 270
 };
 
 struct StaticTextConfig {
@@ -56,6 +59,15 @@ struct ModbusSettings {
     uint16_t port = 502;
     uint8_t unit_id = 1;
     int update_ms = 150;
+    int reconnect_ms = 1000;
+    int address_offset = 0;
+    bool block_read = true;
+    int error_threshold = 5;
+    int error_backoff_ms = 2000;
+    int response_timeout_ms = 500;
+    int byte_timeout_ms = 500;
+    int inter_request_delay_ms = 0;
+    bool log_timestamps = false;
     std::string register_type = "holding";
     bool debug = false;
     std::map<std::string, uint16_t> registers;

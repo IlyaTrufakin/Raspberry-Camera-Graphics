@@ -85,7 +85,6 @@ public:
     void setCrosshairConfig(const CrosshairConfig& config);
 
     void setPanelConfigs(const PanelConfig& left, const PanelConfig& right);
-    void setPanelConfig(const PanelConfig& config);
 
     // Добавить строку текста
     void addTextPosition(const TextPosition& text_pos);

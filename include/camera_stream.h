@@ -78,7 +78,6 @@ public:
     // Параметры текущего потока
     uint32_t getWidth() const { return width_; }
     uint32_t getHeight() const { return height_; }
-    uint32_t getStride() const { return stride_; }
 
     // Получить данные Y-плоскости и шаг
     uint8_t* getFrameData(FrameBuffer* frame, uint32_t& stride);

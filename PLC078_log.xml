@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<LoggerEntries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Logger name="&lt;Default logger&gt;">
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:31 PM">0x803a 0x1 8003;;Controller boot finished</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Setting router 3 address to (0001)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface Com0 registered</Entry>
+    <Entry severity="information" component="CmpBlkDrvCom" user="nobody" timestamp="1/17/2026 10:54:31 PM">Successfully opened COM interface (1)</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call CmpBlkDrvCom init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpBlkDrvComDynamic:  init, 0x00000006 3.5.3.0</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface &lt;interface&gt;COM&lt;1&gt;&lt;/interface&gt; unregistered</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Setting router 3 address to (0001)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface &lt;interface&gt;COM&lt;1&gt;&lt;/interface&gt; registered</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call SerialHandler init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">SerialHandlerDynamic:  init, 0x101aff12 1.51.15.9</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call CmpSerial init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpSerialDynamic:  init, 0x0000ff02 0.0.0.0</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Setting router 2 address to (2ddc:c0a8:004e)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface BlkDrvTcp registered</Entry>
+    <Entry severity="information" component="CmpBlkDrvTcp" user="nobody" timestamp="1/17/2026 10:54:31 PM">Local network address: 192.168.0.78</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call CmpBlkDrvTcp init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpBlkDrvTcpDynamic:  init, 0x00000030 3.5.3.40</Entry>
+    <Entry severity="information" component="CmpSEBlkDrvTcp" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpSEBlkDrvTcp: Server successfully created on port 1105 with task: 261464172</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call CmpSEBlkDrvTcp init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpSEBlkDrvTcpDynamic:  init, 0x101aff10 3.3.1.0</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Setting router 1 address to (0001)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface ether 1 registered</Entry>
+    <Entry severity="information" component="CmpBlkDrvUdp" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface: 172.20.0.1, subnetmask 255.255.252.0</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Setting router 0 address to (004e)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface ether 0 registered</Entry>
+    <Entry severity="information" component="CmpBlkDrvUdp" user="nobody" timestamp="1/17/2026 10:54:31 PM">Network interface: 192.168.0.78, subnetmask 255.255.255.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">Call CmpBlkDrvUdp init hooks</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:31 PM">CmpBlkDrvUdpDynamic:  init, 0x00000007 3.5.3.30</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:30 PM">0x803a 0x1 8051;;LMC 078/AX=8-16-24/RAM=500/NVRAM=128/DiskS=512</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:30 PM">0x8012 0x1 8005;;Program automatic start active</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:30 PM">Application &lt;Application&gt; started</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:29 PM">0x8086 0x1000 8042;CP0;SERCOS phase switched</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:27 PM">0x8086 0x1000 8042;CP1/-1;SERCOS phase switched</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:27 PM">0x8086 0x2 8508;C_SP0=2000F;SERCOS run-up not possible</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:24 PM">0x8086 0x1000 8042;CP0;SERCOS phase switched</Entry>
+    <Entry severity="information" component="CmpElau" user="nobody" timestamp="1/17/2026 10:54:21 PM">0x803a 0x1 8002;V01.51.15.09;Controller boot started</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">CODESYS Control ready</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:19 PM">Setting router 0 address to (0000)</Entry>
+    <Entry severity="information" component="CmpRouter" user="nobody" timestamp="1/17/2026 10:54:19 PM">Network interface for mainnet= not found</Entry>
+    <Entry severity="information" component="CmpApp" user="nobody" timestamp="1/17/2026 10:54:19 PM">Application Application denied to start setting</Entry>
+    <Entry severity="information" component="CmpApp" user="nobody" timestamp="1/17/2026 10:54:19 PM">application=Application, dataid={497b84e1-00000000-00000000-00000000}</Entry>
+    <Entry severity="information" component="CmpApp" user="nobody" timestamp="1/17/2026 10:54:19 PM">application=Application, codeid={72c37cba-00000000-00000000-00000000}</Entry>
+    <Entry severity="information" component="CmpApp" user="nobody" timestamp="1/17/2026 10:54:19 PM">Bootproject of application Application loaded</Entry>
+    <Entry severity="information" component="CmpApp" user="nobody" timestamp="1/17/2026 10:54:19 PM">Retains matched to bootproject of application Application</Entry>
+    <Entry severity="information" component="CmpElauCanDrv" user="nobody" timestamp="1/17/2026 10:54:19 PM">Set baudrate to 1000</Entry>
+    <Entry severity="information" component="CmpElauCanDrv" user="nobody" timestamp="1/17/2026 10:54:19 PM">CL2_NO_ERROR</Entry>
+    <Entry severity="information" component="CmpNetXCanDlDrv" user="nobody" timestamp="1/17/2026 10:54:19 PM">Maximal number of netX CAN channels is 2</Entry>
+    <Entry severity="information" component="CmpChannelServer" user="nobody" timestamp="1/17/2026 10:54:19 PM">8 channels available, each of the size 625000 Bytes</Entry>
+    <Entry severity="information" component="CmpChannelMgr" user="nobody" timestamp="1/17/2026 10:54:19 PM">Running as network client</Entry>
+    <Entry severity="information" component="CmpChannelMgr" user="nobody" timestamp="1/17/2026 10:54:19 PM">Running as network server</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">CmpElauCanDrvDynamic:  init, 0x1003202a 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpEtherNetIPScannerIec init, 0x10032043 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpElauFtpBaseIec init, 0x10032042 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpElauEthernetUtilIec init, 0x10032041 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpWebServerHandlerV3 init, 0x00000072 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpWebServer init, 0x00000071 3.5.3.60</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpPlc init, 0x101aff03 1.51.15.9</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: CmpSerialAdaption init, 0x10032040 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Dynamic: IODrvEthernet init, 0x0000ff05 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSyncDataIn init, 0x1003203c 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSyncDataOut init, 0x1003203b 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauAxisLxm52Linear init, 0x1003203a 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauAxisLxm62Linear init, 0x10032039 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8MIn init, 0x10032038 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8Out init, 0x10032037 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8In init, 0x10032036 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8OutG init, 0x10032035 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8MInG init, 0x10032034 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIshDio8InG init, 0x10032033 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercosIOModuleIshDio8 init, 0x10032032 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauComCom2 init, 0x10032031 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveLMCx01OutGrp init, 0x1003202f 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveWDOut init, 0x10032030 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveLMCx01CInAdv init, 0x1003202e 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveLMCx01CIn init, 0x1003202d 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveLMCx01CInGrp init, 0x1003202c 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDriveLxm32 init, 0x1003203f 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDriveLxm52 init, 0x1003202b 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDriveILM62 init, 0x10032029 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIncOut init, 0x10032028 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSyncModul init, 0x10032027 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSyncSlave init, 0x10032026 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIncIn init, 0x10032025 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSyncMaster init, 0x10032021 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercos3SafePLC init, 0x10032024 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDriveSercDrv init, 0x10032023 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDiag init, 0x10032020 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercosIOMIn init, 0x1003201f 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleOut init, 0x1003201e 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleIn init, 0x1003201d 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleOutG init, 0x1003201c 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleMInG init, 0x1003201b 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauIOModuleInG init, 0x1003201a 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercosIOLxm62 init, 0x10032019 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercos3IODevice init, 0x10032018 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSystemInterfaceObsIec init, 0x10032016 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauLXM62PS init, 0x10032015 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBt4Dio1 init, 0x10032014 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBt4DioT init, 0x10032013 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBT4Enc1X4 init, 0x10032012 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBT4Enc1X3 init, 0x10032011 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBT4Enc1X2 init, 0x10032010 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetBT4Enc1 init, 0x1003200f 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacNetPC init, 0x1003200e 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPhyGeb init, 0x1003200c 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauCom init, 0x1003200b 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauComIec init, 0x1003200a 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauRtp init, 0x10032009 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauNetX init, 0x10032008 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauDriveMC6 init, 0x10032007 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauTrace init, 0x10032006 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveOutGrp init, 0x10032003 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDriveOut init, 0x10032004 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauElauOnlyIec init, 0x10032002 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSystemInterfaceIec init, 0x10032001 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSgUser init, 0x10032017 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercos3SafeDSM_LXM62 init, 0x1003203e 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercos3SafeDSM_ILM62 init, 0x1003203d 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauSercos3 init, 0x10032005 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElauPacDrive init, 0x1003200d 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpElau init, 0x10032000 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpHilscherCIFX init, 0x00000201 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIecStringUtils init, 0x0000007f 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysTimeRtc init, 0x00000127 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysTimer init, 0x00000116 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysTime init, 0x00000115 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysTask init, 0x00000114 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysTarget init, 0x00000112 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysSocket init, 0x00000111 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysShm init, 0x00000110 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysSem init, 0x0000010f 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysProcess init, 0x0000010e 3.5.3.50</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysPort init, 0x0000010d 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysPci init, 0x0000010c 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysOut init, 0x0000010b 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysMsgQ init, 0x0000010a 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysModule init, 0x00000109 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysMem init, 0x00000108 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysInternalLib init, 0x00000107 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysInt init, 0x00000106 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysExcept init, 0x00000103 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysEvent init, 0x00000102 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysEthernet init, 0x0000011c 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysDir init, 0x0000011b 3.5.3.50</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysCpuHandling init, 0x00000101 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysCom init, 0x00000100 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpXMLParser init, 0x00000058 3.5.3.50</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpVisuServer init, 0x00000057 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpVisuHandler init, 0x00000054 3.5.3.70</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpUserMgr init, 0x00000061 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpUserDB init, 0x00000064 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpTraceMgr init, 0x00000070 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpSrv init, 0x0000001c 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpSchedule init, 0x00000019 3.5.3.120</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpRouter init, 0x00000018 3.5.3.50</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpRetain init, 0x00000017 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpPlcShell init, 0x00000128 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpNetXCanDlDrv init, 0x00005f0a 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpNameServiceServer init, 0x00000016 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpNameServiceClientIec init, 0x0000011d 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpNameServiceClient init, 0x00000015 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpMonitor2 init, 0x00000032 3.5.3.90</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpMonitor init, 0x00000014 3.5.3.110</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpMemGC init, 0x0000001f 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIoMgr init, 0x00000012 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIoDrvIec init, 0x0000005a 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIoDrvC init, 0x00000066 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIecVarAccess init, 0x00000060 3.5.3.60</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpIecTask init, 0x00000011 3.5.3.110</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpFileTransfer init, 0x0000005e 3.5.3.90</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpEventMgr init, 0x0000005b 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpDynamicText init, 0x00000051 3.5.3.50</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpDevice init, 0x0000000e 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCryptMD5 init, 0x0000006a 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCommunicationLib init, 0x0000000c 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpChecksum init, 0x0000000b 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpChannelServer init, 0x0000000a 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpChannelMgr init, 0x00000009 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpChannelClientIec init, 0x0000005d 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpChannelClient init, 0x00000008 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAATypes init, 0x00004006 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAATimer init, 0x00004016 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAATickUtil init, 0x00004010 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAATick init, 0x00004009 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAASerialCom init, 0x00004012 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAASegBufferMan init, 0x00004019 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAASdoServer init, 0x00004017 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAASdoClient init, 0x00004011 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAARealTimeClock init, 0x00004014 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAANetBaseServices init, 0x00004018 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAAMemBlockMan init, 0x00004003 3.5.3.30</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAAFile init, 0x00004008 3.5.3.130</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAADTUtil init, 0x00004013 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAACanL2 init, 0x00004004 3.5.3.120</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAACallback init, 0x00004001 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAABehaviourModel init, 0x00004015 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpCAAAsyncMan init, 0x00004007 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpBitmapPool init, 0x00000050 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpBinTagUtilIec init, 0x0000005c 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpBinTagUtil init, 0x00000004 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpAsyncMgr init, 0x0000005f 3.5.3.80</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpAppForce init, 0x00000074 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpAppBP init, 0x00000073 3.5.3.40</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpApp init, 0x00000002 3.5.3.120</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: SysFile init, 0x00000104 3.5.3.120</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpSettings init, 0x0000001a 3.5.3.60</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpLog init, 0x00000013 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CmpMemPool init, 0x0000001e 3.5.3.0</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">System: CM init, 0x00000001 3.5.3.135</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">3.5.3.135 Mar 26 2021</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">Copyright (c) 3S - Smart Software Solutions GmbH</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">CODESYS Control V3</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">&lt;/logoptions&gt;</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">50000</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">3</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">1000</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">&lt;Filter&gt;0xfffeffef&lt;Filter&gt;</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">0</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">rtc</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">normal</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">1</Entry>
+    <Entry severity="information" component="CmpLog" user="nobody" timestamp="1/17/2026 10:54:19 PM">&lt;logoptions&gt;</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">CmpPlcDynamic:  init, 0x101aff03 1.51.15.9</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">CmpSerialAdaptionDynamic:  init, 0x10032040 0.0.0.1</Entry>
+    <Entry severity="information" component="CM" user="nobody" timestamp="1/17/2026 10:54:19 PM">IODrvEthernetDynamic:  init, 0x0000ff05 3.5.3.135</Entry>
+  </Logger>
+</LoggerEntries>

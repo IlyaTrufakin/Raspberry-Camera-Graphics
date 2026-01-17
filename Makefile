@@ -6,8 +6,11 @@ LIBS = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread -lfreetype -l
 SRC_DIR = src
 SOURCES = $(SRC_DIR)/main.cpp \
           $(SRC_DIR)/camera_stream.cpp \
+          $(SRC_DIR)/drm_display.cpp \
           $(SRC_DIR)/hud_overlay.cpp \
           $(SRC_DIR)/modbus_client.cpp \
+          $(SRC_DIR)/video_renderer.cpp \
+          $(SRC_DIR)/app.cpp \
           $(SRC_DIR)/config.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 

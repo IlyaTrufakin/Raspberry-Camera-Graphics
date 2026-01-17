@@ -31,6 +31,12 @@ public:
     void setRegisterType(RegisterType type);
     void setRegisterType(const std::string& type);
     void setDebug(bool enable);
+    void setAddressOffset(int offset);
+    void setBlockRead(bool enable);
+    void setResponseTimeoutMs(int timeout_ms);
+    void setByteTimeoutMs(int timeout_ms);
+    void setInterRequestDelayMs(int delay_ms);
+    void setLogTimestamps(bool enable);
 
     // Подключение к серверу Modbus TCP
     bool connect(const std::string& ip, uint16_t port = 502);
@@ -52,6 +58,7 @@ public:
 
     // Получить значение как строку
     std::string getVariableString(const std::string& name);
+    bool lastErrorIsConnection() const;
 
 private:
     bool readHoldingRegisters(uint16_t address, uint16_t count, uint16_t* values);
@@ -63,8 +70,15 @@ private:
     uint8_t unit_id_;
     RegisterType register_type_ = RegisterType::Holding;
     bool debug_ = false;
+    int address_offset_ = 0;
+    bool block_read_ = true;
+    int response_timeout_ms_ = 500;
+    int byte_timeout_ms_ = 500;
+    int inter_request_delay_ms_ = 0;
+    bool log_timestamps_ = false;
 
     mutable std::mutex ctx_mutex_;
     mutable std::mutex variables_mutex_;
     std::map<std::string, ModbusVariable> variables_;
+    int last_errno_ = 0;
 };

@@ -190,6 +190,17 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 parseUInt(value, config.video.buffer_count);
             } else if (key == "pixel_format") {
                 config.video.pixel_format = value;
+            } else if (key == "flip_horizontal") {
+                parseBool(value, config.video.flip_horizontal);
+            } else if (key == "flip_vertical") {
+                parseBool(value, config.video.flip_vertical);
+            } else if (key == "rotate") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    if (tmp == 0 || tmp == 90 || tmp == 180 || tmp == 270) {
+                        config.video.rotate = tmp;
+                    }
+                }
             }
         } else if (section == "camera") {
             if (key == "ae_enable") {
@@ -377,6 +388,45 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 if (parseUInt(value, tmp)) {
                     config.modbus.update_ms = static_cast<int>(tmp);
                 }
+            } else if (key == "reconnect_ms") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.reconnect_ms = static_cast<int>(tmp);
+                }
+            } else if (key == "address_offset") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.modbus.address_offset = tmp;
+                }
+            } else if (key == "block_read") {
+                parseBool(value, config.modbus.block_read);
+            } else if (key == "error_threshold") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.error_threshold = static_cast<int>(tmp);
+                }
+            } else if (key == "error_backoff_ms") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.error_backoff_ms = static_cast<int>(tmp);
+                }
+            } else if (key == "response_timeout_ms") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.response_timeout_ms = static_cast<int>(tmp);
+                }
+            } else if (key == "byte_timeout_ms") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.byte_timeout_ms = static_cast<int>(tmp);
+                }
+            } else if (key == "inter_request_delay_ms") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.inter_request_delay_ms = static_cast<int>(tmp);
+                }
+            } else if (key == "log_timestamps") {
+                parseBool(value, config.modbus.log_timestamps);
             } else if (key == "register_type") {
                 std::string v = toLower(trim(value));
                 if (v == "holding" || v == "input") {

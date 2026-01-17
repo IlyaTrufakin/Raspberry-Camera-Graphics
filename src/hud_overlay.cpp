@@ -291,9 +291,6 @@ void HUDOverlay::setPanelConfigs(const PanelConfig& left, const PanelConfig& rig
     panel_right_ = right;
 }
 
-void HUDOverlay::setPanelConfig(const PanelConfig& config) {
-    panel_left_ = config;
-}
 
 void HUDOverlay::addTextPosition(const TextPosition& text_pos) {
     text_positions_.push_back(text_pos);
