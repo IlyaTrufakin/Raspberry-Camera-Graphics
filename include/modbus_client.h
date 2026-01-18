@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <string>
@@ -61,6 +62,7 @@ public:
     // Получить значение как строку
     std::string getVariableString(const std::string& name);
     bool lastErrorIsConnection() const;
+    uint32_t getErrorCount() const;
 
 private:
     bool readHoldingRegisters(uint16_t address, uint16_t count, uint16_t* values);
@@ -86,4 +88,5 @@ private:
     mutable std::mutex variables_mutex_;
     std::map<std::string, ModbusVariable> variables_;
     int last_errno_ = 0;
+    std::atomic<uint32_t> error_count_{0};
 };

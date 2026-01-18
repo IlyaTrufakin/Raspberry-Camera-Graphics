@@ -238,6 +238,8 @@ void App::updateHud(const std::string& fps_text) {
         std::string text = "---";
         if (item.name == "fps") {
             text = fps_text;
+        } else if (item.name == "modbus_errors") {
+            text = use_modbus_ ? std::to_string(modbus_.getErrorCount()) : "0";
         } else if (use_modbus_) {
             uint16_t value = 0;
             if (modbus_.getVariable(item.name, value)) {

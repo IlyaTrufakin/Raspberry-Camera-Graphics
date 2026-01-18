@@ -317,6 +317,7 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
                   << " func=" << func
                   << " error=" << modbus_strerror(errno) << std::endl;
         last_errno_ = errno;
+        error_count_++;
         if (last_errno_ == ETIMEDOUT) {
             modbus_flush(ctx_);
         }
@@ -331,6 +332,10 @@ bool ModbusClient::readHoldingRegisters(uint16_t address, uint16_t count, uint16
     }
     last_errno_ = 0;
     return true;
+}
+
+uint32_t ModbusClient::getErrorCount() const {
+    return error_count_.load();
 }
 
 bool ModbusClient::lastErrorIsConnection() const {
