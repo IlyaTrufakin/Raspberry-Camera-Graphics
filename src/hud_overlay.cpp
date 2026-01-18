@@ -416,8 +416,12 @@ void HUDOverlay::renderCrosshair() {
     float cx = crosshair_config_.center_x * 2.0f - 1.0f;
     float cy = -(crosshair_config_.center_y * 2.0f - 1.0f);
 
-    float len = crosshair_config_.line_length;
     float gap = crosshair_config_.gap;
+    float left = crosshair_config_.h_limit_left * 2.0f - 1.0f;
+    float right = crosshair_config_.h_limit_right * 2.0f - 1.0f;
+    if (left > right) {
+        std::swap(left, right);
+    }
 
     glLineWidth(crosshair_config_.line_width);
 
@@ -457,11 +461,14 @@ void HUDOverlay::renderCrosshair() {
 
     std::vector<float> verts;
     if (crosshair_config_.line_style == 0) {
+        float left_end = cx - gap;
+        float right_start = cx + gap;
+
         float h_line[] = {
-            cx - len - gap, cy,
-            cx - gap, cy,
-            cx + gap, cy,
-            cx + len + gap, cy
+            left, cy,
+            left_end, cy,
+            right_start, cy,
+            right, cy
         };
 
         float top = 1.0f;
@@ -473,9 +480,14 @@ void HUDOverlay::renderCrosshair() {
             cx, bottom
         };
 
-        glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_LINES, 0, 2);
-        glDrawArrays(GL_LINES, 2, 2);
+        if (left_end > left) {
+            glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
+            glDrawArrays(GL_LINES, 0, 2);
+        }
+        if (right_start < right) {
+            glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
+            glDrawArrays(GL_LINES, 2, 2);
+        }
 
         glBufferData(GL_ARRAY_BUFFER, sizeof(v_line), v_line, GL_DYNAMIC_DRAW);
         glDrawArrays(GL_LINES, 0, 2);
@@ -483,8 +495,12 @@ void HUDOverlay::renderCrosshair() {
     } else {
         float dash_len = std::max(0.001f, crosshair_config_.dash_length);
         float dash_gap = std::max(0.0f, crosshair_config_.dash_gap);
-        addDashedLine(verts, cx - len - gap, cy, cx - gap, cy, dash_len, dash_gap);
-        addDashedLine(verts, cx + gap, cy, cx + len + gap, cy, dash_len, dash_gap);
+        if (cx - gap > left) {
+            addDashedLine(verts, left, cy, cx - gap, cy, dash_len, dash_gap);
+        }
+        if (cx + gap < right) {
+            addDashedLine(verts, cx + gap, cy, right, cy, dash_len, dash_gap);
+        }
 
         float top = 1.0f;
         float bottom = -1.0f;

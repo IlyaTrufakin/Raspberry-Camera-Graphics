@@ -121,7 +121,10 @@ bool App::initialize() {
         std::cerr << "Failed to initialize HUD" << std::endl;
         return false;
     }
-    hud_.setCrosshairConfig(config_.crosshair);
+    CrosshairConfig cross = config_.crosshair;
+    cross.h_limit_left = computeLeftEdge();
+    cross.h_limit_right = computeRightEdge();
+    hud_.setCrosshairConfig(cross);
     hud_.setPanelConfigs(config_.panel_left, config_.panel_right);
 
     if (config_.modbus.enabled) {
@@ -206,6 +209,8 @@ void App::updateCrosshair() {
     }
 
     CrosshairConfig cross = config_.crosshair;
+    cross.h_limit_left = computeLeftEdge();
+    cross.h_limit_right = computeRightEdge();
     cross.center_x = 0.5f + static_cast<float>(static_cast<int16_t>(raw_x)) /
                                   static_cast<float>(display_.width());
     cross.center_y = 0.5f + static_cast<float>(static_cast<int16_t>(raw_y)) /

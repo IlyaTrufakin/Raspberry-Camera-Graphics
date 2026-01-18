@@ -41,6 +41,8 @@ struct CrosshairConfig {
     float dash_length = 0.05f;
     float dash_gap = 0.03f;
     bool modbus_override = true;
+    float h_limit_left = 0.0f;
+    float h_limit_right = 1.0f;
 };
 
 // Фоновая панель для текста (нормализованные координаты)
