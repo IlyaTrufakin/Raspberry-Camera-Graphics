@@ -7,6 +7,7 @@
 #include <thread>
 #include <unistd.h>
 
+
 bool App::loadConfiguration(const std::string& path) {
     bool ok = loadConfig(path, config_);
     if (!ok) {
