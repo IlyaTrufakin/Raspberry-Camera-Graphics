@@ -68,6 +68,8 @@ struct ModbusSettings {
     int byte_timeout_ms = 500;
     int inter_request_delay_ms = 0;
     bool log_timestamps = false;
+    bool keep_last_on_error = true;
+    int reset_after_errors = 3;
     std::string register_type = "holding";
     bool debug = false;
     std::map<std::string, uint16_t> registers;

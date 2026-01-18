@@ -427,6 +427,13 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 }
             } else if (key == "log_timestamps") {
                 parseBool(value, config.modbus.log_timestamps);
+            } else if (key == "keep_last_on_error") {
+                parseBool(value, config.modbus.keep_last_on_error);
+            } else if (key == "reset_after_errors") {
+                uint32_t tmp = 0;
+                if (parseUInt(value, tmp)) {
+                    config.modbus.reset_after_errors = static_cast<int>(tmp);
+                }
             } else if (key == "register_type") {
                 std::string v = toLower(trim(value));
                 if (v == "holding" || v == "input") {

@@ -81,6 +81,17 @@ void ModbusClient::setLogTimestamps(bool enable) {
     log_timestamps_ = enable;
 }
 
+void ModbusClient::setKeepLastOnError(bool enable) {
+    keep_last_on_error_ = enable;
+}
+
+void ModbusClient::setResetAfterErrors(int count) {
+    reset_after_errors_ = count;
+    if (reset_after_errors_ < 0) {
+        reset_after_errors_ = 0;
+    }
+}
+
 static std::string formatTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
@@ -192,12 +203,16 @@ bool ModbusClient::readVariables() {
                 pair.second.value = values[offset];
                 pair.second.valid = true;
             }
+            consecutive_errors_ = 0;
             return true;
+        }
+        if (lastErrorIsConnection()) {
+            return false;
         }
     }
 
     bool any_ok = false;
-    {
+    if (!keep_last_on_error_) {
         std::lock_guard<std::mutex> lock(variables_mutex_);
         for (auto& pair : variables_) {
             pair.second.valid = false;
@@ -214,9 +229,32 @@ bool ModbusClient::readVariables() {
                 it->second.valid = true;
             }
             any_ok = true;
+        } else if (!keep_last_on_error_) {
+            std::lock_guard<std::mutex> lock(variables_mutex_);
+            auto it = variables_.find(pair.first);
+            if (it != variables_.end()) {
+                it->second.valid = false;
+            }
+        }
+        if (lastErrorIsConnection()) {
+            return false;
         }
         if (inter_request_delay_ms_ > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(inter_request_delay_ms_));
+        }
+    }
+
+    if (any_ok) {
+        consecutive_errors_ = 0;
+    } else {
+        consecutive_errors_++;
+        if (reset_after_errors_ > 0 && consecutive_errors_ >= reset_after_errors_) {
+            std::lock_guard<std::mutex> lock(variables_mutex_);
+            for (auto& pair : variables_) {
+                pair.second.value = 0;
+                pair.second.valid = true;
+            }
+            consecutive_errors_ = 0;
         }
     }
 

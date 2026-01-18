@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(g++:*)",
-      "Bash(libcamera-hello:*)",
-      "Bash(rpicam-hello:*)"
-    ]
-  }
-}

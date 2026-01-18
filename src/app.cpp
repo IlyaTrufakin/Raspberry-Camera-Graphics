@@ -134,6 +134,8 @@ bool App::initialize() {
         modbus_.setByteTimeoutMs(config_.modbus.byte_timeout_ms);
         modbus_.setInterRequestDelayMs(config_.modbus.inter_request_delay_ms);
         modbus_.setLogTimestamps(config_.modbus.log_timestamps);
+        modbus_.setKeepLastOnError(config_.modbus.keep_last_on_error);
+        modbus_.setResetAfterErrors(config_.modbus.reset_after_errors);
         for (const auto& entry : config_.modbus.registers) {
             modbus_.registerVariable(entry.first, entry.second);
         }

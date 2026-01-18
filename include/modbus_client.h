@@ -37,6 +37,8 @@ public:
     void setByteTimeoutMs(int timeout_ms);
     void setInterRequestDelayMs(int delay_ms);
     void setLogTimestamps(bool enable);
+    void setKeepLastOnError(bool enable);
+    void setResetAfterErrors(int count);
 
     // Подключение к серверу Modbus TCP
     bool connect(const std::string& ip, uint16_t port = 502);
@@ -76,6 +78,9 @@ private:
     int byte_timeout_ms_ = 500;
     int inter_request_delay_ms_ = 0;
     bool log_timestamps_ = false;
+    bool keep_last_on_error_ = true;
+    int reset_after_errors_ = 0;
+    int consecutive_errors_ = 0;
 
     mutable std::mutex ctx_mutex_;
     mutable std::mutex variables_mutex_;
