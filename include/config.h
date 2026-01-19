@@ -16,6 +16,7 @@ struct VideoConfig {
     bool flip_horizontal = false;
     bool flip_vertical = false;
     int rotate = 0; // 0, 90, 180, 270
+    int swap_interval = 1; // 0 = vsync off
 };
 
 struct StaticTextConfig {

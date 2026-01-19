@@ -202,6 +202,11 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                         config.video.rotate = tmp;
                     }
                 }
+            } else if (key == "swap_interval") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.video.swap_interval = tmp;
+                }
             }
         } else if (section == "camera") {
             if (key == "ae_enable") {

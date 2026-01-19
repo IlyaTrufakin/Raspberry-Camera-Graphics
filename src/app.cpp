@@ -121,6 +121,8 @@ bool App::initialize() {
     if (!display_.initialize()) {
         return false;
     }
+    display_.setProfileEnabled(config_.hud_profile);
+    display_.setSwapInterval(config_.video.swap_interval);
 
     CameraConfig cam_config = buildCameraConfig();
     if (!camera_.initialize(cam_config)) {
