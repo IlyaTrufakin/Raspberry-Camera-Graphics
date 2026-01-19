@@ -7,6 +7,8 @@
 #include "modbus_client.h"
 #include "video_renderer.h"
 
+#include <map>
+#include <mutex>
 #include <string>
 
 class App {
@@ -22,6 +24,7 @@ private:
     CameraConfig buildCameraConfig() const;
     void updateHud(const std::string& fps_text);
     void updateCrosshair();
+    void refreshModbusTextCache();
     float computeLeftEdge() const;
     float computeRightEdge() const;
 
@@ -32,4 +35,6 @@ private:
     VideoRenderer renderer_{};
     ModbusClient modbus_{};
     bool use_modbus_ = false;
+    std::mutex modbus_text_mutex_;
+    std::map<std::string, std::string> modbus_text_cache_;
 };

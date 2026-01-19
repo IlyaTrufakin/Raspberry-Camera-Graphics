@@ -73,6 +73,7 @@ struct ModbusSettings {
     std::string register_type = "holding";
     bool debug = false;
     std::map<std::string, uint16_t> registers;
+    std::map<std::string, int> decimals;
 };
 
 struct CameraSettings {
@@ -126,6 +127,7 @@ struct AppConfig {
     RoiConfig roi;
     int hud_update_ms = 150;
     std::string hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
+    bool hud_profile = false;
     std::vector<StaticTextConfig> static_texts;
     std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;

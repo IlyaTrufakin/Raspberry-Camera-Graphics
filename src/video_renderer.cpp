@@ -1,6 +1,7 @@
 #include "video_renderer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 
 #ifndef GL_UNPACK_ROW_LENGTH_EXT
@@ -98,6 +99,24 @@ bool VideoRenderer::initialize(DRMDisplay& display, const AppConfig& config,
     return true;
 }
 
+void VideoRenderer::setProfileEnabled(bool enable) {
+    profile_enabled_ = enable;
+    upload_samples_ = 0;
+    draw_samples_ = 0;
+    prof_upload_total_ms_ = 0.0;
+    prof_upload_get_ms_ = 0.0;
+    prof_upload_planes_ms_ = 0.0;
+    prof_upload_tex_y_ms_ = 0.0;
+    prof_upload_tex_u_ms_ = 0.0;
+    prof_upload_tex_v_ms_ = 0.0;
+    prof_upload_tex_rgb_ms_ = 0.0;
+    prof_draw_setup_ms_ = 0.0;
+    prof_draw_video_ms_ = 0.0;
+    prof_draw_hud_ms_ = 0.0;
+    prof_draw_swap_ms_ = 0.0;
+    profile_last_ = std::chrono::steady_clock::now();
+}
+
 void VideoRenderer::compileShader(const char* source, GLenum type, GLuint& shader) {
     shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, nullptr);
@@ -171,8 +190,10 @@ void VideoRenderer::buildQuadVertices(const AppConfig& config, float left_edge, 
 }
 
 void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const AppConfig& config) {
+    auto t0 = std::chrono::steady_clock::now();
     uint32_t stride = 0;
     uint8_t* frame_data = camera.getFrameData(frame, stride);
+    auto t1 = std::chrono::steady_clock::now();
     if (!frame_data) {
         return;
     }
@@ -181,13 +202,16 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
 
     if (use_yuv_) {
         CameraStream::PlaneData py, pu, pv;
+        auto t2 = std::chrono::steady_clock::now();
         if (camera.getFramePlanes(frame, py, pu, pv)) {
+            auto t3 = std::chrono::steady_clock::now();
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textures_[0]);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(py.stride));
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                          py.width, py.height, 0,
                          GL_LUMINANCE, GL_UNSIGNED_BYTE, py.data);
+            auto t4 = std::chrono::steady_clock::now();
 
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textures_[1]);
@@ -195,6 +219,7 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                          pu.width, pu.height, 0,
                          GL_LUMINANCE, GL_UNSIGNED_BYTE, pu.data);
+            auto t5 = std::chrono::steady_clock::now();
 
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, textures_[2]);
@@ -202,8 +227,17 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                          pv.width, pv.height, 0,
                          GL_LUMINANCE, GL_UNSIGNED_BYTE, pv.data);
+            auto t6 = std::chrono::steady_clock::now();
 
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
+
+            if (profile_enabled_) {
+                prof_upload_get_ms_ += std::chrono::duration<double, std::milli>(t1 - t0).count();
+                prof_upload_planes_ms_ += std::chrono::duration<double, std::milli>(t3 - t2).count();
+                prof_upload_tex_y_ms_ += std::chrono::duration<double, std::milli>(t4 - t3).count();
+                prof_upload_tex_u_ms_ += std::chrono::duration<double, std::milli>(t5 - t4).count();
+                prof_upload_tex_v_ms_ += std::chrono::duration<double, std::milli>(t6 - t5).count();
+            }
         }
     } else {
         glActiveTexture(GL_TEXTURE0);
@@ -228,6 +262,7 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
             row_pixels = static_cast<int>(stride / bytes_per_pixel);
         }
 
+        auto t2 = std::chrono::steady_clock::now();
         if (row_pixels == static_cast<int>(camera.getWidth())) {
             glTexImage2D(GL_TEXTURE_2D, 0, internal_format,
                          camera.getWidth(), camera.getHeight(), 0,
@@ -239,12 +274,24 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
                          format, GL_UNSIGNED_BYTE, frame_data);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
         }
+        auto t3 = std::chrono::steady_clock::now();
+        if (profile_enabled_) {
+            prof_upload_get_ms_ += std::chrono::duration<double, std::milli>(t1 - t0).count();
+            prof_upload_tex_rgb_ms_ += std::chrono::duration<double, std::milli>(t3 - t2).count();
+        }
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    if (profile_enabled_) {
+        auto t_end = std::chrono::steady_clock::now();
+        prof_upload_total_ms_ += std::chrono::duration<double, std::milli>(t_end - t0).count();
+        upload_samples_++;
+    }
 }
 
 void VideoRenderer::draw(HUDOverlay& hud) {
+    auto t0 = std::chrono::steady_clock::now();
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(program_);
@@ -276,13 +323,55 @@ void VideoRenderer::draw(HUDOverlay& hud) {
     glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glVertexAttribPointer(texLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
+    auto t1 = std::chrono::steady_clock::now();
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    auto t2 = std::chrono::steady_clock::now();
 
     glDisableVertexAttribArray(posLoc);
     glDisableVertexAttribArray(texLoc);
 
     hud.render();
+    auto t3 = std::chrono::steady_clock::now();
     display_->swapBuffers();
+    auto t4 = std::chrono::steady_clock::now();
+
+    if (profile_enabled_) {
+        prof_draw_setup_ms_ += std::chrono::duration<double, std::milli>(t1 - t0).count();
+        prof_draw_video_ms_ += std::chrono::duration<double, std::milli>(t2 - t1).count();
+        prof_draw_hud_ms_ += std::chrono::duration<double, std::milli>(t3 - t2).count();
+        prof_draw_swap_ms_ += std::chrono::duration<double, std::milli>(t4 - t3).count();
+        draw_samples_++;
+        if (t4 - profile_last_ >= std::chrono::seconds(1)) {
+            double u_div = upload_samples_ > 0 ? static_cast<double>(upload_samples_) : 1.0;
+            double d_div = draw_samples_ > 0 ? static_cast<double>(draw_samples_) : 1.0;
+            std::cout << "VR upload avg ms: total=" << (prof_upload_total_ms_ / u_div)
+                      << " get=" << (prof_upload_get_ms_ / u_div)
+                      << " planes=" << (prof_upload_planes_ms_ / u_div)
+                      << " y=" << (prof_upload_tex_y_ms_ / u_div)
+                      << " u=" << (prof_upload_tex_u_ms_ / u_div)
+                      << " v=" << (prof_upload_tex_v_ms_ / u_div)
+                      << " rgb=" << (prof_upload_tex_rgb_ms_ / u_div)
+                      << " | draw avg ms: setup=" << (prof_draw_setup_ms_ / d_div)
+                      << " draw=" << (prof_draw_video_ms_ / d_div)
+                      << " hud=" << (prof_draw_hud_ms_ / d_div)
+                      << " swap=" << (prof_draw_swap_ms_ / d_div)
+                      << std::endl;
+            upload_samples_ = 0;
+            draw_samples_ = 0;
+            prof_upload_total_ms_ = 0.0;
+            prof_upload_get_ms_ = 0.0;
+            prof_upload_planes_ms_ = 0.0;
+            prof_upload_tex_y_ms_ = 0.0;
+            prof_upload_tex_u_ms_ = 0.0;
+            prof_upload_tex_v_ms_ = 0.0;
+            prof_upload_tex_rgb_ms_ = 0.0;
+            prof_draw_setup_ms_ = 0.0;
+            prof_draw_video_ms_ = 0.0;
+            prof_draw_hud_ms_ = 0.0;
+            prof_draw_swap_ms_ = 0.0;
+            profile_last_ = t4;
+        }
+    }
 }
 
 void VideoRenderer::shutdown() {

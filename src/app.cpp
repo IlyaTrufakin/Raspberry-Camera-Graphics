@@ -3,10 +3,25 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <thread>
 #include <unistd.h>
 
+
+static std::string formatWithDecimals(int16_t value, int decimals) {
+    if (decimals <= 0) {
+        return std::to_string(value);
+    }
+    double scaled = static_cast<double>(value);
+    for (int i = 0; i < decimals; ++i) {
+        scaled /= 10.0;
+    }
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(decimals) << scaled;
+    return oss.str();
+}
 
 bool App::loadConfiguration(const std::string& path) {
     bool ok = loadConfig(path, config_);
@@ -180,6 +195,7 @@ bool App::initialize() {
                     consecutive_errors = 0;
                 }
 
+                refreshModbusTextCache();
                 std::this_thread::sleep_for(std::chrono::milliseconds(modbus_interval_ms));
             }
         }).detach();
@@ -191,7 +207,11 @@ bool App::initialize() {
         left_edge = 0.0f;
         right_edge = 1.0f;
     }
-    return renderer_.initialize(display_, config_, left_edge, right_edge);
+    if (!renderer_.initialize(display_, config_, left_edge, right_edge)) {
+        return false;
+    }
+    renderer_.setProfileEnabled(config_.hud_profile);
+    return true;
 }
 
 void App::updateCrosshair() {
@@ -238,12 +258,11 @@ void App::updateHud(const std::string& fps_text) {
         std::string text = "---";
         if (item.name == "fps") {
             text = fps_text;
-        } else if (item.name == "modbus_errors") {
-            text = use_modbus_ ? std::to_string(modbus_.getErrorCount()) : "0";
         } else if (use_modbus_) {
-            uint16_t value = 0;
-            if (modbus_.getVariable(item.name, value)) {
-                text = std::to_string(value);
+            std::lock_guard<std::mutex> lock(modbus_text_mutex_);
+            auto it = modbus_text_cache_.find(item.name);
+            if (it != modbus_text_cache_.end()) {
+                text = it->second;
             } else {
                 text = "0";
             }
@@ -266,6 +285,31 @@ void App::updateHud(const std::string& fps_text) {
     }
 }
 
+void App::refreshModbusTextCache() {
+    std::lock_guard<std::mutex> lock(modbus_text_mutex_);
+    for (const auto& item : config_.dynamic_texts) {
+        if (item.name == "fps") {
+            continue;
+        }
+        if (item.name == "modbus_errors") {
+            modbus_text_cache_[item.name] = std::to_string(modbus_.getErrorCount());
+            continue;
+        }
+        uint16_t value = 0;
+        if (modbus_.getVariable(item.name, value)) {
+            int16_t signed_value = static_cast<int16_t>(value);
+            auto it = config_.modbus.decimals.find(item.name);
+            if (it != config_.modbus.decimals.end()) {
+                modbus_text_cache_[item.name] = formatWithDecimals(signed_value, it->second);
+            } else {
+                modbus_text_cache_[item.name] = std::to_string(signed_value);
+            }
+        } else {
+            modbus_text_cache_[item.name] = "0";
+        }
+    }
+}
+
 void App::runLoop() {
     std::cout << "Starting main loop..." << std::endl;
 
@@ -277,22 +321,57 @@ void App::runLoop() {
     int hud_interval_ms = config_.hud_update_ms > 0 ? config_.hud_update_ms : 150;
     auto last_hud_update = std::chrono::steady_clock::now()
                            - std::chrono::milliseconds(hud_interval_ms);
+    auto last_profile = std::chrono::steady_clock::now();
+    int prof_samples = 0;
+    double prof_hud_ms = 0.0;
+    double prof_render_ms = 0.0;
+    double prof_upload_ms = 0.0;
 
     while (true) {
         FrameBuffer* frame = camera_.getNextFrame();
         if (frame) {
+            auto u0 = std::chrono::steady_clock::now();
             renderer_.uploadFrame(camera_, frame, config_);
+            auto u1 = std::chrono::steady_clock::now();
+            if (config_.hud_profile) {
+                prof_upload_ms += std::chrono::duration<double, std::milli>(u1 - u0).count();
+            }
             camera_.returnFrame(frame);
         }
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
+            auto t0 = std::chrono::steady_clock::now();
             updateCrosshair();
             updateHud(fps_text);
+            auto t1 = std::chrono::steady_clock::now();
+            if (config_.hud_profile) {
+                prof_hud_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+            }
             last_hud_update = now;
         }
 
+        auto r0 = std::chrono::steady_clock::now();
         renderer_.draw(hud_);
+        auto r1 = std::chrono::steady_clock::now();
+        if (config_.hud_profile) {
+            prof_render_ms += std::chrono::duration<double, std::milli>(r1 - r0).count();
+            prof_samples++;
+            if (r1 - last_profile >= std::chrono::seconds(1)) {
+                double avg_hud = prof_samples > 0 ? prof_hud_ms / prof_samples : 0.0;
+                double avg_render = prof_samples > 0 ? prof_render_ms / prof_samples : 0.0;
+                double avg_upload = prof_samples > 0 ? prof_upload_ms / prof_samples : 0.0;
+                std::cout << "HUD avg ms: " << avg_hud
+                          << " | Upload avg ms: " << avg_upload
+                          << " | Draw avg ms: " << avg_render
+                          << std::endl;
+                prof_samples = 0;
+                prof_hud_ms = 0.0;
+                prof_render_ms = 0.0;
+                prof_upload_ms = 0.0;
+                last_profile = r1;
+            }
+        }
 
         frame_count++;
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();

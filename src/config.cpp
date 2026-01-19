@@ -123,6 +123,7 @@ static void setDefaults(AppConfig& config) {
 
     config.modbus = ModbusSettings();
     config.modbus.registers.clear();
+    config.modbus.decimals.clear();
 
     config.static_texts.clear();
 
@@ -370,6 +371,8 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 }
             } else if (key == "font_path") {
                 config.hud_font_path = value;
+            } else if (key == "profile") {
+                parseBool(value, config.hud_profile);
             }
         } else if (section == "modbus") {
             if (key == "enabled") {
@@ -450,6 +453,11 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                     cleared_registers = true;
                 }
                 config.modbus.registers[key] = addr;
+            }
+        } else if (section == "modbus.decimals") {
+            int decimals = 0;
+            if (parseInt(value, decimals)) {
+                config.modbus.decimals[key] = decimals;
             }
         } else if (section == "text.static") {
             auto parts = splitComma(value);

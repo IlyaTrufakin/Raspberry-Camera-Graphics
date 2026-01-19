@@ -230,17 +230,6 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
     std::cout << "Font loaded: " << font_path << std::endl;
     std::cout << "Total glyphs cached: " << characters_.size() << std::endl;
 
-    std::cout << "Checking Cyrillic glyphs:" << std::endl;
-    uint32_t test_chars[] = {0x0421, 0x043A, 0x043E, 0x0440};
-    for (uint32_t c : test_chars) {
-        auto it = characters_.find(c);
-        if (it != characters_.end()) {
-            std::cout << "  Char U+" << std::hex << c << std::dec
-                      << ": w=" << it->second.width
-                      << " h=" << it->second.height << std::endl;
-        }
-    }
-
     return true;
 }
 
