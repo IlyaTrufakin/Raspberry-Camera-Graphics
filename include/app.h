@@ -35,6 +35,7 @@ private:
     VideoRenderer renderer_{};
     ModbusClient modbus_{};
     bool use_modbus_ = false;
+    bool hud_dirty_ = true;
     std::mutex modbus_text_mutex_;
     std::map<std::string, std::string> modbus_text_cache_;
 };

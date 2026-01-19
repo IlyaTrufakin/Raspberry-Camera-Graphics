@@ -129,6 +129,7 @@ struct AppConfig {
     int hud_update_ms = 150;
     std::string hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
     bool hud_profile = false;
+    bool hud_cache = false;
     std::vector<StaticTextConfig> static_texts;
     std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;

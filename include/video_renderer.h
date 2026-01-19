@@ -20,8 +20,9 @@ public:
     void shutdown();
 
     void uploadFrame(CameraStream& camera, FrameBuffer* frame, const AppConfig& config);
-    void draw(HUDOverlay& hud);
+    void draw(HUDOverlay& hud, bool hud_dirty);
     void setProfileEnabled(bool enable);
+    void setHudCacheEnabled(bool enable);
 
 private:
     void compileShader(const char* source, GLenum type, GLuint& shader);
@@ -37,6 +38,18 @@ private:
     bool use_yuv_ = false;
     bool use_rgb_ = false;
     float quad_vertices_[16]{};
+    bool textures_initialized_ = false;
+    uint32_t tex_w_ = 0;
+    uint32_t tex_h_ = 0;
+
+    bool hud_cache_enabled_ = false;
+    GLuint hud_program_ = 0;
+    GLuint hud_vbo_ = 0;
+    GLuint hud_fbo_ = 0;
+    GLuint hud_tex_ = 0;
+    uint32_t hud_tex_w_ = 0;
+    uint32_t hud_tex_h_ = 0;
+    float hud_vertices_[16]{};
 
     bool profile_enabled_ = false;
     std::chrono::steady_clock::time_point profile_last_;

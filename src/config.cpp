@@ -378,6 +378,8 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 config.hud_font_path = value;
             } else if (key == "profile") {
                 parseBool(value, config.hud_profile);
+            } else if (key == "cache") {
+                parseBool(value, config.hud_cache);
             }
         } else if (section == "modbus") {
             if (key == "enabled") {

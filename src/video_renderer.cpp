@@ -47,6 +47,25 @@ void main() {
     gl_FragColor = vec4(rgb, 1.0);
 }
 )";
+
+const char* kHudVs = R"(
+attribute vec2 aPosition;
+attribute vec2 aTexCoord;
+varying vec2 vTexCoord;
+void main() {
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+    vTexCoord = aTexCoord;
+}
+)";
+
+const char* kHudFs = R"(
+precision mediump float;
+varying vec2 vTexCoord;
+uniform sampler2D uTexture;
+void main() {
+    gl_FragColor = texture2D(uTexture, vTexCoord);
+}
+)";
 } // namespace
 
 VideoRenderer::~VideoRenderer() {
@@ -95,6 +114,46 @@ bool VideoRenderer::initialize(DRMDisplay& display, const AppConfig& config,
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices_), quad_vertices_, GL_STATIC_DRAW);
 
+    if (hud_cache_enabled_) {
+        GLuint hud_vs = 0;
+        GLuint hud_fs = 0;
+        compileShader(kHudVs, GL_VERTEX_SHADER, hud_vs);
+        compileShader(kHudFs, GL_FRAGMENT_SHADER, hud_fs);
+        linkProgram(hud_vs, hud_fs, hud_program_);
+        glDeleteShader(hud_vs);
+        glDeleteShader(hud_fs);
+
+        hud_vertices_[0] = -1.0f; hud_vertices_[1] = -1.0f; hud_vertices_[2] = 0.0f; hud_vertices_[3] = 0.0f;
+        hud_vertices_[4] =  1.0f; hud_vertices_[5] = -1.0f; hud_vertices_[6] = 1.0f; hud_vertices_[7] = 0.0f;
+        hud_vertices_[8] = -1.0f; hud_vertices_[9] =  1.0f; hud_vertices_[10] = 0.0f; hud_vertices_[11] = 1.0f;
+        hud_vertices_[12] = 1.0f; hud_vertices_[13] = 1.0f; hud_vertices_[14] = 1.0f; hud_vertices_[15] = 1.0f;
+
+        glGenBuffers(1, &hud_vbo_);
+        glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(hud_vertices_), hud_vertices_, GL_STATIC_DRAW);
+
+        hud_tex_w_ = display.width();
+        hud_tex_h_ = display.height();
+        glGenTextures(1, &hud_tex_);
+        glBindTexture(GL_TEXTURE_2D, hud_tex_);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     static_cast<int>(hud_tex_w_), static_cast<int>(hud_tex_h_),
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+        glGenFramebuffers(1, &hud_fbo_);
+        glBindFramebuffer(GL_FRAMEBUFFER, hud_fbo_);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hud_tex_, 0);
+        GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "HUD FBO incomplete: " << std::hex << fb_status << std::dec << std::endl;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     glViewport(0, 0, display.width(), display.height());
     return true;
 }
@@ -115,6 +174,10 @@ void VideoRenderer::setProfileEnabled(bool enable) {
     prof_draw_hud_ms_ = 0.0;
     prof_draw_swap_ms_ = 0.0;
     profile_last_ = std::chrono::steady_clock::now();
+}
+
+void VideoRenderer::setHudCacheEnabled(bool enable) {
+    hud_cache_enabled_ = enable;
 }
 
 void VideoRenderer::compileShader(const char* source, GLenum type, GLuint& shader) {
@@ -205,28 +268,51 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
         auto t2 = std::chrono::steady_clock::now();
         if (camera.getFramePlanes(frame, py, pu, pv)) {
             auto t3 = std::chrono::steady_clock::now();
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            if (!textures_initialized_ || tex_w_ != py.width || tex_h_ != py.height) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, textures_[0]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                             py.width, py.height, 0,
+                             GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
+
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, textures_[1]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                             pu.width, pu.height, 0,
+                             GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
+
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, textures_[2]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                             pv.width, pv.height, 0,
+                             GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
+                tex_w_ = py.width;
+                tex_h_ = py.height;
+                textures_initialized_ = true;
+            }
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textures_[0]);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(py.stride));
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                         py.width, py.height, 0,
-                         GL_LUMINANCE, GL_UNSIGNED_BYTE, py.data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            py.width, py.height,
+                            GL_LUMINANCE, GL_UNSIGNED_BYTE, py.data);
             auto t4 = std::chrono::steady_clock::now();
 
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, textures_[1]);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(pu.stride));
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                         pu.width, pu.height, 0,
-                         GL_LUMINANCE, GL_UNSIGNED_BYTE, pu.data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            pu.width, pu.height,
+                            GL_LUMINANCE, GL_UNSIGNED_BYTE, pu.data);
             auto t5 = std::chrono::steady_clock::now();
 
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, textures_[2]);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, static_cast<int>(pv.stride));
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                         pv.width, pv.height, 0,
-                         GL_LUMINANCE, GL_UNSIGNED_BYTE, pv.data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            pv.width, pv.height,
+                            GL_LUMINANCE, GL_UNSIGNED_BYTE, pv.data);
             auto t6 = std::chrono::steady_clock::now();
 
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
@@ -263,15 +349,25 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
         }
 
         auto t2 = std::chrono::steady_clock::now();
-        if (row_pixels == static_cast<int>(camera.getWidth())) {
+        if (!textures_initialized_ || tex_w_ != camera.getWidth() || tex_h_ != camera.getHeight()) {
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             glTexImage2D(GL_TEXTURE_2D, 0, internal_format,
                          camera.getWidth(), camera.getHeight(), 0,
-                         format, GL_UNSIGNED_BYTE, frame_data);
+                         format, GL_UNSIGNED_BYTE, nullptr);
+            tex_w_ = camera.getWidth();
+            tex_h_ = camera.getHeight();
+            textures_initialized_ = true;
+        }
+
+        if (row_pixels == static_cast<int>(camera.getWidth())) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            camera.getWidth(), camera.getHeight(),
+                            format, GL_UNSIGNED_BYTE, frame_data);
         } else {
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, row_pixels);
-            glTexImage2D(GL_TEXTURE_2D, 0, internal_format,
-                         camera.getWidth(), camera.getHeight(), 0,
-                         format, GL_UNSIGNED_BYTE, frame_data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            camera.getWidth(), camera.getHeight(),
+                            format, GL_UNSIGNED_BYTE, frame_data);
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
         }
         auto t3 = std::chrono::steady_clock::now();
@@ -290,7 +386,7 @@ void VideoRenderer::uploadFrame(CameraStream& camera, FrameBuffer* frame, const 
     }
 }
 
-void VideoRenderer::draw(HUDOverlay& hud) {
+void VideoRenderer::draw(HUDOverlay& hud, bool hud_dirty) {
     auto t0 = std::chrono::steady_clock::now();
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -330,7 +426,38 @@ void VideoRenderer::draw(HUDOverlay& hud) {
     glDisableVertexAttribArray(posLoc);
     glDisableVertexAttribArray(texLoc);
 
-    hud.render();
+    if (hud_cache_enabled_) {
+        if (hud_dirty) {
+            glBindFramebuffer(GL_FRAMEBUFFER, hud_fbo_);
+            glViewport(0, 0, display_->width(), display_->height());
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            hud.render();
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, display_->width(), display_->height());
+        }
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glUseProgram(hud_program_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, hud_tex_);
+        glUniform1i(glGetUniformLocation(hud_program_, "uTexture"), 0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
+        GLint hpos = glGetAttribLocation(hud_program_, "aPosition");
+        GLint htex = glGetAttribLocation(hud_program_, "aTexCoord");
+        glEnableVertexAttribArray(hpos);
+        glEnableVertexAttribArray(htex);
+        glVertexAttribPointer(hpos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glVertexAttribPointer(htex, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDisableVertexAttribArray(hpos);
+        glDisableVertexAttribArray(htex);
+        glDisable(GL_BLEND);
+    } else {
+        hud.render();
+    }
     auto t3 = std::chrono::steady_clock::now();
     display_->swapBuffers();
     auto t4 = std::chrono::steady_clock::now();
@@ -382,6 +509,22 @@ void VideoRenderer::shutdown() {
     if (vbo_) {
         glDeleteBuffers(1, &vbo_);
         vbo_ = 0;
+    }
+    if (hud_program_) {
+        glDeleteProgram(hud_program_);
+        hud_program_ = 0;
+    }
+    if (hud_vbo_) {
+        glDeleteBuffers(1, &hud_vbo_);
+        hud_vbo_ = 0;
+    }
+    if (hud_fbo_) {
+        glDeleteFramebuffers(1, &hud_fbo_);
+        hud_fbo_ = 0;
+    }
+    if (hud_tex_) {
+        glDeleteTextures(1, &hud_tex_);
+        hud_tex_ = 0;
     }
     if (textures_[0] != 0) {
         glDeleteTextures(texture_count_, textures_);

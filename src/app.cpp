@@ -209,6 +209,7 @@ bool App::initialize() {
         left_edge = 0.0f;
         right_edge = 1.0f;
     }
+    renderer_.setHudCacheEnabled(config_.hud_cache);
     if (!renderer_.initialize(display_, config_, left_edge, right_edge)) {
         return false;
     }
@@ -285,6 +286,8 @@ void App::updateHud(const std::string& fps_text) {
                                               bit_cfg.width, bit_cfg.height, c});
         }
     }
+
+    hud_dirty_ = true;
 }
 
 void App::refreshModbusTextCache() {
@@ -320,7 +323,9 @@ void App::runLoop() {
     int current_fps = 0;
     std::string fps_text = "0";
 
-    int hud_interval_ms = config_.hud_update_ms > 0 ? config_.hud_update_ms : 150;
+    int hud_interval_ms = (use_modbus_ && config_.modbus.update_ms > 0)
+                              ? config_.modbus.update_ms
+                              : (config_.hud_update_ms > 0 ? config_.hud_update_ms : 150);
     auto last_hud_update = std::chrono::steady_clock::now()
                            - std::chrono::milliseconds(hud_interval_ms);
     auto last_profile = std::chrono::steady_clock::now();
@@ -354,8 +359,9 @@ void App::runLoop() {
         }
 
         auto r0 = std::chrono::steady_clock::now();
-        renderer_.draw(hud_);
+        renderer_.draw(hud_, hud_dirty_);
         auto r1 = std::chrono::steady_clock::now();
+        hud_dirty_ = false;
         if (config_.hud_profile) {
             prof_render_ms += std::chrono::duration<double, std::milli>(r1 - r0).count();
             prof_samples++;
