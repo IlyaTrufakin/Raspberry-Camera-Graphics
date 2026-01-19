@@ -13,7 +13,6 @@ struct CameraConfig {
     uint32_t width = 1012;
     uint32_t height = 760;
     uint32_t buffer_count = 2;
-    std::string pixel_format = "YUV420";
     StreamRole role = StreamRole::Viewfinder;
     bool ae_enable = true;
     bool awb_enable = true;

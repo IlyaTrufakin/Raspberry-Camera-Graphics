@@ -93,7 +93,7 @@ bool CameraStream::initialize(const CameraConfig& config) {
     StreamConfiguration &streamConfig = config_->at(0);
     streamConfig.size.width = config.width;
     streamConfig.size.height = config.height;
-    streamConfig.pixelFormat = PixelFormat::fromString(config.pixel_format);
+    streamConfig.pixelFormat = PixelFormat::fromString("YUV420");
     streamConfig.bufferCount = config.buffer_count;
 
     CameraConfiguration::Status validation = config_->validate();

@@ -12,11 +12,9 @@ struct VideoConfig {
     uint32_t width = 1012;
     uint32_t height = 760;
     uint32_t buffer_count = 2;
-    std::string pixel_format = "YUV420";
     bool flip_horizontal = false;
     bool flip_vertical = false;
     int rotate = 0; // 0, 90, 180, 270
-    int swap_interval = 1; // 0 = vsync off
 };
 
 struct StaticTextConfig {
@@ -128,8 +126,6 @@ struct AppConfig {
     RoiConfig roi;
     int hud_update_ms = 150;
     std::string hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
-    bool hud_profile = false;
-    bool hud_cache = false;
     std::vector<StaticTextConfig> static_texts;
     std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;

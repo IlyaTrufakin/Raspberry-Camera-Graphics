@@ -189,8 +189,6 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 parseUInt(value, config.video.height);
             } else if (key == "buffer_count") {
                 parseUInt(value, config.video.buffer_count);
-            } else if (key == "pixel_format") {
-                config.video.pixel_format = value;
             } else if (key == "flip_horizontal") {
                 parseBool(value, config.video.flip_horizontal);
             } else if (key == "flip_vertical") {
@@ -201,11 +199,6 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                     if (tmp == 0 || tmp == 90 || tmp == 180 || tmp == 270) {
                         config.video.rotate = tmp;
                     }
-                }
-            } else if (key == "swap_interval") {
-                int tmp = 0;
-                if (parseInt(value, tmp)) {
-                    config.video.swap_interval = tmp;
                 }
             }
         } else if (section == "camera") {
@@ -376,10 +369,6 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 }
             } else if (key == "font_path") {
                 config.hud_font_path = value;
-            } else if (key == "profile") {
-                parseBool(value, config.hud_profile);
-            } else if (key == "cache") {
-                parseBool(value, config.hud_cache);
             }
         } else if (section == "modbus") {
             if (key == "enabled") {

@@ -36,7 +36,6 @@ CameraConfig App::buildCameraConfig() const {
     cam.width = config_.video.width;
     cam.height = config_.video.height;
     cam.buffer_count = config_.video.buffer_count;
-    cam.pixel_format = config_.video.pixel_format;
 
     cam.ae_enable = config_.camera.ae_enable;
     cam.awb_enable = config_.camera.awb_enable;
@@ -121,9 +120,6 @@ bool App::initialize() {
     if (!display_.initialize()) {
         return false;
     }
-    display_.setProfileEnabled(config_.hud_profile);
-    display_.setSwapInterval(config_.video.swap_interval);
-
     CameraConfig cam_config = buildCameraConfig();
     if (!camera_.initialize(cam_config)) {
         std::cerr << "Failed to initialize camera" << std::endl;
@@ -209,11 +205,9 @@ bool App::initialize() {
         left_edge = 0.0f;
         right_edge = 1.0f;
     }
-    renderer_.setHudCacheEnabled(config_.hud_cache);
     if (!renderer_.initialize(display_, config_, left_edge, right_edge)) {
         return false;
     }
-    renderer_.setProfileEnabled(config_.hud_profile);
     return true;
 }
 
@@ -287,7 +281,6 @@ void App::updateHud(const std::string& fps_text) {
         }
     }
 
-    hud_dirty_ = true;
 }
 
 void App::refreshModbusTextCache() {
@@ -328,57 +321,23 @@ void App::runLoop() {
                               : (config_.hud_update_ms > 0 ? config_.hud_update_ms : 150);
     auto last_hud_update = std::chrono::steady_clock::now()
                            - std::chrono::milliseconds(hud_interval_ms);
-    auto last_profile = std::chrono::steady_clock::now();
-    int prof_samples = 0;
-    double prof_hud_ms = 0.0;
-    double prof_render_ms = 0.0;
-    double prof_upload_ms = 0.0;
 
     while (true) {
         FrameBuffer* frame = camera_.getNextFrame();
         if (frame) {
-            auto u0 = std::chrono::steady_clock::now();
-            renderer_.uploadFrame(camera_, frame, config_);
-            auto u1 = std::chrono::steady_clock::now();
-            if (config_.hud_profile) {
-                prof_upload_ms += std::chrono::duration<double, std::milli>(u1 - u0).count();
-            }
-            camera_.returnFrame(frame);
+            renderer_.uploadFrame(camera_, frame);
         }
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
-            auto t0 = std::chrono::steady_clock::now();
             updateCrosshair();
             updateHud(fps_text);
-            auto t1 = std::chrono::steady_clock::now();
-            if (config_.hud_profile) {
-                prof_hud_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
-            }
             last_hud_update = now;
         }
 
-        auto r0 = std::chrono::steady_clock::now();
-        renderer_.draw(hud_, hud_dirty_);
-        auto r1 = std::chrono::steady_clock::now();
-        hud_dirty_ = false;
-        if (config_.hud_profile) {
-            prof_render_ms += std::chrono::duration<double, std::milli>(r1 - r0).count();
-            prof_samples++;
-            if (r1 - last_profile >= std::chrono::seconds(1)) {
-                double avg_hud = prof_samples > 0 ? prof_hud_ms / prof_samples : 0.0;
-                double avg_render = prof_samples > 0 ? prof_render_ms / prof_samples : 0.0;
-                double avg_upload = prof_samples > 0 ? prof_upload_ms / prof_samples : 0.0;
-                std::cout << "HUD avg ms: " << avg_hud
-                          << " | Upload avg ms: " << avg_upload
-                          << " | Draw avg ms: " << avg_render
-                          << std::endl;
-                prof_samples = 0;
-                prof_hud_ms = 0.0;
-                prof_render_ms = 0.0;
-                prof_upload_ms = 0.0;
-                last_profile = r1;
-            }
+        renderer_.draw(hud_);
+        if (frame) {
+            camera_.returnFrame(frame);
         }
 
         frame_count++;
