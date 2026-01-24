@@ -14,7 +14,7 @@ SOURCES = $(SRC_DIR)/main.cpp \
           $(SRC_DIR)/config.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
-TARGET = camhud2
+TARGET = camera
 
 all: $(TARGET)
 
