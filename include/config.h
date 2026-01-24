@@ -55,6 +55,7 @@ struct StatusBitConfig {
     float height = 0.0f;
     Color color_on = Color(0.0f, 1.0f, 0.0f, 1.0f);
     Color color_off = Color(1.0f, 0.0f, 0.0f, 0.5f);
+    Color color_unknown = Color(0.5f, 0.5f, 0.5f, 0.5f);
     std::string text;
     int text_align = 0; // 0 = left, 1 = right, 2 = center
     float text_padding = 0.01f; // normalized (0..1) relative to screen width
@@ -136,6 +137,7 @@ struct AppConfig {
     RoiConfig roi;
     int hud_update_ms = 150;
     std::string hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
+    float hud_text_vshift = 0.08f;
     std::vector<StaticTextConfig> static_texts;
     std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;

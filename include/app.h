@@ -25,6 +25,7 @@ private:
     void updateHud(const std::string& fps_text);
     void updateCrosshair();
     void refreshModbusTextCache();
+    void buildStaticHudCaches();
     float computeLeftEdge() const;
     float computeRightEdge() const;
 
@@ -37,4 +38,6 @@ private:
     bool use_modbus_ = false;
     std::mutex modbus_text_mutex_;
     std::map<std::string, std::string> modbus_text_cache_;
+    std::vector<TextPosition> static_rect_text_cache_;
+    std::vector<TextPosition> status_bit_text_cache_;
 };

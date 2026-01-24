@@ -91,10 +91,14 @@ public:
     // Добавить строку текста
     void addTextPosition(const TextPosition& text_pos);
     void addRectPosition(const RectPosition& rect_pos);
+    void setStaticTextPositions(const std::vector<TextPosition>& text_positions);
+    void setStaticRectPositions(const std::vector<RectPosition>& rect_positions);
 
     // Очистить список текстовых строк
     void clearTextPositions();
     void clearRectPositions();
+    void clearDynamicTextPositions();
+    void clearDynamicRectPositions();
 
     // Отрисовка HUD
     void render();
@@ -120,8 +124,10 @@ private:
     CrosshairConfig crosshair_config_;
     PanelConfig panel_left_;
     PanelConfig panel_right_;
-    std::vector<TextPosition> text_positions_;
-    std::vector<RectPosition> rect_positions_;
+    std::vector<TextPosition> static_text_positions_;
+    std::vector<RectPosition> static_rect_positions_;
+    std::vector<TextPosition> dynamic_text_positions_;
+    std::vector<RectPosition> dynamic_rect_positions_;
 
     GLuint hud_program_;
     GLuint text_program_;

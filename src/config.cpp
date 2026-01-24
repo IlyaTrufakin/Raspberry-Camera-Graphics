@@ -157,6 +157,7 @@ static void setDefaults(AppConfig& config) {
     config.roi = RoiConfig();
     config.hud_update_ms = 150;
     config.hud_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
+    config.hud_text_vshift = 0.08f;
 
     config.modbus = ModbusSettings();
     config.modbus.registers.clear();
@@ -188,9 +189,57 @@ bool loadConfig(const std::string& path, AppConfig& config) {
     std::vector<std::string> status_ids;
     std::map<std::string, size_t> rect_index;
 
+    std::vector<std::string> logical_lines;
+    {
+        std::string raw;
+        std::string current_section;
+        std::string pending;
+        while (std::getline(file, raw)) {
+            std::string t = trim(raw);
+            if (t.empty() || t[0] == '#' || t[0] == ';') {
+                continue;
+            }
+            if (t.front() == '[' && t.back() == ']') {
+                if (!pending.empty()) {
+                    logical_lines.push_back(pending);
+                    pending.clear();
+                }
+                logical_lines.push_back(t);
+                current_section = toLower(trim(t.substr(1, t.size() - 2)));
+                continue;
+            }
+            bool allow_continuation = (current_section == "status.bits" || current_section == "rect.static");
+            size_t eq_pos = t.find('=');
+            if (eq_pos == std::string::npos) {
+                if (allow_continuation && !pending.empty()) {
+                    pending += "; ";
+                    pending += t;
+                }
+                continue;
+            }
+            if (!pending.empty()) {
+                logical_lines.push_back(pending);
+                pending.clear();
+            }
+            std::string key = toLower(trim(t.substr(0, eq_pos)));
+            bool is_compact = allow_continuation &&
+                              t.find(':', eq_pos + 1) != std::string::npos &&
+                              key.find('.') == std::string::npos;
+            if (is_compact) {
+                pending = t;
+            } else {
+                logical_lines.push_back(t);
+            }
+        }
+        if (!pending.empty()) {
+            logical_lines.push_back(pending);
+        }
+    }
+
     std::string section;
     std::string line;
-    while (std::getline(file, line)) {
+    for (const auto& raw_line : logical_lines) {
+        line = raw_line;
         line = trim(line);
         if (line.empty() || line[0] == '#' || line[0] == ';') {
             continue;
@@ -411,6 +460,8 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 }
             } else if (key == "font_path") {
                 config.hud_font_path = value;
+            } else if (key == "text_vshift") {
+                parseFloat(value, config.hud_text_vshift);
             }
         } else if (section == "modbus") {
             if (key == "enabled") {
@@ -696,6 +747,9 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                     parseColor(value, item.color_on);
                 } else if (field == "color_off" || field == "off_color" || field == "color.off") {
                     parseColor(value, item.color_off);
+                } else if (field == "color_unknown" || field == "color_lost" || field == "color_offline" ||
+                           field == "color.unknown" || field == "color.no_link" || field == "unknown_color") {
+                    parseColor(value, item.color_unknown);
                 } else if (field == "text") {
                     item.text = value;
                 } else if (field == "text_align" || field == "align") {
@@ -756,6 +810,9 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                         parseColor(field_value, item.color_on);
                     } else if (field == "color_off" || field == "off_color" || field == "color.off" || field == "off") {
                         parseColor(field_value, item.color_off);
+                    } else if (field == "color_unknown" || field == "color_lost" || field == "color_offline" ||
+                               field == "color.unknown" || field == "color.no_link" || field == "unknown" || field == "na") {
+                        parseColor(field_value, item.color_unknown);
                     } else if (field == "text") {
                         item.text = field_value;
                     } else if (field == "text_align" || field == "align") {
@@ -799,6 +856,14 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 parseFloat(parts[13], a_off);
                 item.color_on = Color(r_on, g_on, b_on, a_on);
                 item.color_off = Color(r_off, g_off, b_off, a_off);
+                if (parts.size() >= 18) {
+                    float r_u = 0.5f, g_u = 0.5f, b_u = 0.5f, a_u = 0.5f;
+                    parseFloat(parts[14], r_u);
+                    parseFloat(parts[15], g_u);
+                    parseFloat(parts[16], b_u);
+                    parseFloat(parts[17], a_u);
+                    item.color_unknown = Color(r_u, g_u, b_u, a_u);
+                }
                 config.status_bits.push_back(item);
                 status_index[key] = config.status_bits.size() - 1;
                 status_ids.push_back(std::string());

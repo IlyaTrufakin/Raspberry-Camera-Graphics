@@ -139,6 +139,7 @@ bool App::initialize() {
     cross.h_limit_right = computeRightEdge();
     hud_.setCrosshairConfig(cross);
     hud_.setPanelConfigs(config_.panel_left, config_.panel_right);
+    buildStaticHudCaches();
 
     if (config_.modbus.enabled) {
         modbus_.setUnitId(config_.modbus.unit_id);
@@ -211,6 +212,107 @@ bool App::initialize() {
     return true;
 }
 
+void App::buildStaticHudCaches() {
+    static_rect_text_cache_.clear();
+    status_bit_text_cache_.clear();
+
+    std::vector<TextPosition> static_texts;
+    static_texts.reserve(config_.static_texts.size());
+    for (const auto& item : config_.static_texts) {
+        static_texts.emplace_back(item.x, item.y, item.text, item.scale, item.color);
+    }
+
+    std::vector<RectPosition> static_rects;
+    static_rects.reserve(config_.static_rects.size());
+    for (const auto& rect : config_.static_rects) {
+        static_rects.push_back(RectPosition{rect.x, rect.y, rect.width, rect.height, rect.color});
+    }
+
+    auto buildText = [&](float rect_x, float rect_y, float rect_w, float rect_h,
+                         const std::string& text, const Color& text_color,
+                         int text_align, float text_padding, float text_scale,
+                         TextPosition& out) -> bool {
+        if (text.empty() || rect_w <= 0.0f || rect_h <= 0.0f) {
+            return false;
+        }
+        float rect_x_px = rect_x * display_.width();
+        float rect_y_px = rect_y * display_.height();
+        float rect_w_px = rect_w * display_.width();
+        float rect_h_px = rect_h * display_.height();
+
+        float pad_px = std::max(0.0f, text_padding) * display_.width();
+        float scale = text_scale;
+        float base_w = 0.0f, base_ascent = 0.0f, base_descent = 0.0f;
+        if (scale <= 0.0f) {
+            if (hud_.measureText(text, 1.0f, base_w, base_ascent, base_descent)) {
+                float base_h = base_ascent + base_descent;
+                float target_h = rect_h_px * 0.8f;
+                float max_w = std::max(0.0f, rect_w_px - 2.0f * pad_px);
+                float scale_h = (base_h > 0.0f) ? (target_h / base_h) : 1.0f;
+                float scale_w = (base_w > 0.0f) ? (max_w / base_w) : scale_h;
+                scale = std::max(0.01f, std::min(scale_h, scale_w));
+            } else {
+                scale = 0.4f;
+            }
+        }
+
+        float text_w = 0.0f, text_ascent = 0.0f, text_descent = 0.0f;
+        if (!hud_.measureText(text, scale, text_w, text_ascent, text_descent)) {
+            return false;
+        }
+
+        float rect_center_y = rect_y_px + rect_h_px * 0.5f;
+        float optical_shift = (text_ascent + text_descent) * config_.hud_text_vshift;
+        float baseline_y = rect_center_y - (text_ascent - text_descent) * 0.5f - optical_shift;
+
+        float x_px = rect_x_px + pad_px;
+        if (text_align == 1) {
+            x_px = rect_x_px + rect_w_px - pad_px - text_w;
+            if (x_px < rect_x_px + pad_px) {
+                x_px = rect_x_px + pad_px;
+            }
+        } else if (text_align == 2) {
+            x_px = rect_x_px + (rect_w_px - text_w) * 0.5f;
+            if (x_px < rect_x_px + pad_px) {
+                x_px = rect_x_px + pad_px;
+            }
+        }
+
+        float x_norm = x_px / static_cast<float>(display_.width());
+        float y_norm = baseline_y / static_cast<float>(display_.height());
+        out = TextPosition(x_norm, y_norm, text, scale, text_color);
+        return true;
+    };
+
+    for (const auto& rect : config_.static_rects) {
+        TextPosition tp(0.0f, 0.0f, "", 1.0f, rect.text_color);
+        if (buildText(rect.x, rect.y, rect.width, rect.height, rect.text,
+                      rect.text_color, rect.text_align, rect.text_padding,
+                      rect.text_scale, tp)) {
+            static_rect_text_cache_.push_back(tp);
+        }
+    }
+
+    if (config_.modbus.enabled) {
+        for (const auto& bit_cfg : config_.status_bits) {
+            TextPosition tp(0.0f, 0.0f, "", 1.0f, bit_cfg.text_color);
+            if (buildText(bit_cfg.x, bit_cfg.y, bit_cfg.width, bit_cfg.height,
+                          bit_cfg.text, bit_cfg.text_color, bit_cfg.text_align,
+                          bit_cfg.text_padding, bit_cfg.text_scale, tp)) {
+                status_bit_text_cache_.push_back(tp);
+            }
+        }
+    }
+
+    static_texts.insert(static_texts.end(),
+                        static_rect_text_cache_.begin(), static_rect_text_cache_.end());
+    static_texts.insert(static_texts.end(),
+                        status_bit_text_cache_.begin(), status_bit_text_cache_.end());
+
+    hud_.setStaticRectPositions(static_rects);
+    hud_.setStaticTextPositions(static_texts);
+}
+
 void App::updateCrosshair() {
     if (!use_modbus_ || !config_.crosshair.modbus_override) {
         return;
@@ -240,84 +342,26 @@ void App::updateCrosshair() {
 }
 
 void App::updateHud(const std::string& fps_text) {
-    hud_.clearTextPositions();
-    hud_.clearRectPositions();
+    hud_.clearDynamicTextPositions();
+    hud_.clearDynamicRectPositions();
 
-    auto addRectText = [&](float rect_x, float rect_y, float rect_w, float rect_h,
-                           const std::string& text, const Color& text_color,
-                           int text_align, float text_padding, float text_scale) {
-        if (text.empty() || rect_w <= 0.0f || rect_h <= 0.0f) {
-            return;
-        }
-        float rect_x_px = rect_x * display_.width();
-        float rect_y_px = rect_y * display_.height();
-        float rect_w_px = rect_w * display_.width();
-        float rect_h_px = rect_h * display_.height();
-
-        float pad_px = std::max(0.0f, text_padding) * display_.width();
-        float scale = text_scale;
-        float base_w = 0.0f, base_ascent = 0.0f, base_descent = 0.0f;
-        if (scale <= 0.0f) {
-            if (hud_.measureText(text, 1.0f, base_w, base_ascent, base_descent)) {
-                float base_h = base_ascent + base_descent;
-                float target_h = rect_h_px * 0.8f;
-                float max_w = std::max(0.0f, rect_w_px - 2.0f * pad_px);
-                float scale_h = (base_h > 0.0f) ? (target_h / base_h) : 1.0f;
-                float scale_w = (base_w > 0.0f) ? (max_w / base_w) : scale_h;
-                scale = std::max(0.01f, std::min(scale_h, scale_w));
-            } else {
-                scale = 0.4f;
-            }
-        }
-
-        float text_w = 0.0f, text_ascent = 0.0f, text_descent = 0.0f;
-        if (!hud_.measureText(text, scale, text_w, text_ascent, text_descent)) {
-            return;
-        }
-
-        float rect_center_y = rect_y_px + rect_h_px * 0.5f;
-        float optical_shift = (text_ascent + text_descent) * 0.08f;
-        float baseline_y = rect_center_y - (text_ascent - text_descent) * 0.5f - optical_shift;
-
-        float x_px = rect_x_px + pad_px;
-        if (text_align == 1) {
-            x_px = rect_x_px + rect_w_px - pad_px - text_w;
-            if (x_px < rect_x_px + pad_px) {
-                x_px = rect_x_px + pad_px;
-            }
-        } else if (text_align == 2) {
-            x_px = rect_x_px + (rect_w_px - text_w) * 0.5f;
-            if (x_px < rect_x_px + pad_px) {
-                x_px = rect_x_px + pad_px;
-            }
-        }
-
-        float x_norm = x_px / static_cast<float>(display_.width());
-        float y_norm = baseline_y / static_cast<float>(display_.height());
-        hud_.addTextPosition(TextPosition(x_norm, y_norm, text, scale, text_color));
-    };
-
-    for (const auto& item : config_.static_texts) {
-        hud_.addTextPosition(TextPosition(item.x, item.y, item.text, item.scale, item.color));
-    }
-
-    for (const auto& rect : config_.static_rects) {
-        hud_.addRectPosition(RectPosition{rect.x, rect.y, rect.width, rect.height, rect.color});
-        addRectText(rect.x, rect.y, rect.width, rect.height, rect.text,
-                    rect.text_color, rect.text_align, rect.text_padding, rect.text_scale);
-    }
+    bool modbus_link_ok = use_modbus_ && modbus_.isConnected();
 
     for (const auto& item : config_.dynamic_texts) {
         std::string text = "---";
         if (item.name == "fps") {
             text = fps_text;
         } else if (use_modbus_) {
+            if (!modbus_link_ok) {
+                text = "---";
+            } else {
             std::lock_guard<std::mutex> lock(modbus_text_mutex_);
             auto it = modbus_text_cache_.find(item.name);
             if (it != modbus_text_cache_.end()) {
                 text = it->second;
             } else {
                 text = "0";
+            }
             }
         }
         hud_.addTextPosition(TextPosition(item.x, item.y, text, item.scale, item.color));
@@ -326,17 +370,15 @@ void App::updateHud(const std::string& fps_text) {
     if (use_modbus_) {
         for (const auto& bit_cfg : config_.status_bits) {
             uint16_t value = 0;
-            bool ok = modbus_.getVariable(bit_cfg.name, value);
+            bool ok = modbus_link_ok && modbus_.getVariable(bit_cfg.name, value);
             bool bit_on = false;
             if (ok) {
                 bit_on = ((value >> bit_cfg.bit) & 0x1) != 0;
             }
-            Color c = bit_on ? bit_cfg.color_on : bit_cfg.color_off;
+            Color c = modbus_link_ok ? (bit_on ? bit_cfg.color_on : bit_cfg.color_off)
+                                     : bit_cfg.color_unknown;
             hud_.addRectPosition(RectPosition{bit_cfg.x, bit_cfg.y,
                                               bit_cfg.width, bit_cfg.height, c});
-            addRectText(bit_cfg.x, bit_cfg.y, bit_cfg.width, bit_cfg.height,
-                        bit_cfg.text, bit_cfg.text_color, bit_cfg.text_align,
-                        bit_cfg.text_padding, bit_cfg.text_scale);
         }
     }
 
@@ -344,6 +386,15 @@ void App::updateHud(const std::string& fps_text) {
 
 void App::refreshModbusTextCache() {
     std::lock_guard<std::mutex> lock(modbus_text_mutex_);
+    if (!modbus_.isConnected()) {
+        for (const auto& item : config_.dynamic_texts) {
+            if (item.name == "fps") {
+                continue;
+            }
+            modbus_text_cache_[item.name] = "---";
+        }
+        return;
+    }
     for (const auto& item : config_.dynamic_texts) {
         if (item.name == "fps") {
             continue;

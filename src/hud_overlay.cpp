@@ -333,19 +333,35 @@ void HUDOverlay::setPanelConfigs(const PanelConfig& left, const PanelConfig& rig
 
 
 void HUDOverlay::addTextPosition(const TextPosition& text_pos) {
-    text_positions_.push_back(text_pos);
+    dynamic_text_positions_.push_back(text_pos);
 }
 
 void HUDOverlay::addRectPosition(const RectPosition& rect_pos) {
-    rect_positions_.push_back(rect_pos);
+    dynamic_rect_positions_.push_back(rect_pos);
+}
+
+void HUDOverlay::setStaticTextPositions(const std::vector<TextPosition>& text_positions) {
+    static_text_positions_ = text_positions;
+}
+
+void HUDOverlay::setStaticRectPositions(const std::vector<RectPosition>& rect_positions) {
+    static_rect_positions_ = rect_positions;
 }
 
 void HUDOverlay::clearTextPositions() {
-    text_positions_.clear();
+    dynamic_text_positions_.clear();
 }
 
 void HUDOverlay::clearRectPositions() {
-    rect_positions_.clear();
+    dynamic_rect_positions_.clear();
+}
+
+void HUDOverlay::clearDynamicTextPositions() {
+    dynamic_text_positions_.clear();
+}
+
+void HUDOverlay::clearDynamicRectPositions() {
+    dynamic_rect_positions_.clear();
 }
 
 void HUDOverlay::render() {
@@ -359,7 +375,7 @@ void HUDOverlay::render() {
         renderPanel(panel_right_);
     }
 
-    if (!rect_positions_.empty()) {
+    if (!static_rect_positions_.empty() || !dynamic_rect_positions_.empty()) {
         renderRectangles();
     }
 
@@ -414,30 +430,35 @@ void HUDOverlay::renderRectangles() {
     GLint posLoc = glGetAttribLocation(hud_program_, "aPos");
     glEnableVertexAttribArray(posLoc);
 
-    for (const auto& rect : rect_positions_) {
-        glUniform4f(colorLoc,
-                    rect.color.r,
-                    rect.color.g,
-                    rect.color.b,
-                    rect.color.a);
+    auto drawList = [&](const std::vector<RectPosition>& rects) {
+        for (const auto& rect : rects) {
+            glUniform4f(colorLoc,
+                        rect.color.r,
+                        rect.color.g,
+                        rect.color.b,
+                        rect.color.a);
 
-        float x0 = rect.x * 2.0f - 1.0f;
-        float x1 = (rect.x + rect.width) * 2.0f - 1.0f;
-        float y0 = rect.y * 2.0f - 1.0f;
-        float y1 = (rect.y + rect.height) * 2.0f - 1.0f;
+            float x0 = rect.x * 2.0f - 1.0f;
+            float x1 = (rect.x + rect.width) * 2.0f - 1.0f;
+            float y0 = rect.y * 2.0f - 1.0f;
+            float y1 = (rect.y + rect.height) * 2.0f - 1.0f;
 
-        float vertices[] = {
-            x0, y0,
-            x1, y0,
-            x0, y1,
-            x1, y1
-        };
+            float vertices[] = {
+                x0, y0,
+                x1, y0,
+                x0, y1,
+                x1, y1
+            };
 
-        glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, 0);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
+            glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, 0);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+    };
+
+    drawList(static_rect_positions_);
+    drawList(dynamic_rect_positions_);
 
     glDisableVertexAttribArray(posLoc);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -566,12 +587,17 @@ void HUDOverlay::renderText() {
         return;
     }
 
-    for (const auto& text_pos : text_positions_) {
-        float x = text_pos.x * display_width_;
-        float y = text_pos.y * display_height_;
+    auto drawList = [&](const std::vector<TextPosition>& texts) {
+        for (const auto& text_pos : texts) {
+            float x = text_pos.x * display_width_;
+            float y = text_pos.y * display_height_;
 
-        renderTextDirect(text_pos.text, x, y, text_pos.scale, text_pos.color);
-    }
+            renderTextDirect(text_pos.text, x, y, text_pos.scale, text_pos.color);
+        }
+    };
+
+    drawList(static_text_positions_);
+    drawList(dynamic_text_positions_);
 }
 
 bool HUDOverlay::measureText(const std::string& text, float scale, float& out_width,
@@ -597,8 +623,22 @@ bool HUDOverlay::measureText(const std::string& text, float scale, float& out_wi
         }
         const Character& ch = characters_[c];
         out_width += (ch.advance >> 6) * scale;
-        out_ascent = std::max(out_ascent, ch.bearing_y * scale);
-        out_descent = std::max(out_descent, (ch.height - ch.bearing_y) * scale);
+    }
+
+    if (ft_face_->size) {
+        float asc = static_cast<float>(ft_face_->size->metrics.ascender) / 64.0f;
+        float desc = static_cast<float>(-ft_face_->size->metrics.descender) / 64.0f;
+        out_ascent = std::max(0.0f, asc * scale);
+        out_descent = std::max(0.0f, desc * scale);
+    } else {
+        for (char32_t c : unicode_text) {
+            if (!loadGlyph(c)) {
+                continue;
+            }
+            const Character& ch = characters_[c];
+            out_ascent = std::max(out_ascent, ch.bearing_y * scale);
+            out_descent = std::max(out_descent, (ch.height - ch.bearing_y) * scale);
+        }
     }
 
     return true;
