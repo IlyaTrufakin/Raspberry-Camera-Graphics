@@ -31,6 +31,11 @@ struct StaticRectConfig {
     float width = 0.0f;
     float height = 0.0f;
     Color color = Color(1.0f, 1.0f, 1.0f, 1.0f);
+    std::string text;
+    int text_align = 0; // 0 = left, 1 = right, 2 = center
+    float text_padding = 0.01f; // normalized (0..1) relative to screen width
+    float text_scale = 0.0f; // <=0 => auto-fit
+    Color text_color = Color(1.0f, 1.0f, 1.0f, 1.0f);
 };
 
 struct DynamicTextConfig {
@@ -50,6 +55,11 @@ struct StatusBitConfig {
     float height = 0.0f;
     Color color_on = Color(0.0f, 1.0f, 0.0f, 1.0f);
     Color color_off = Color(1.0f, 0.0f, 0.0f, 0.5f);
+    std::string text;
+    int text_align = 0; // 0 = left, 1 = right, 2 = center
+    float text_padding = 0.01f; // normalized (0..1) relative to screen width
+    float text_scale = 0.0f; // <=0 => auto-fit
+    Color text_color = Color(1.0f, 1.0f, 1.0f, 1.0f);
 };
 
 struct ModbusSettings {

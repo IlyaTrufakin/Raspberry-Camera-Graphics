@@ -233,6 +233,57 @@ bool HUDOverlay::loadFont(const std::string& font_path) {
     return true;
 }
 
+bool HUDOverlay::loadGlyph(char32_t c) {
+    if (characters_.find(c) != characters_.end()) {
+        return true;
+    }
+    if (!ft_face_) {
+        return false;
+    }
+    if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
+        return false;
+    }
+
+    static int load_count = 0;
+    if (load_count <= 10) {
+        std::cout << "  Glyph U+" << std::hex << c << std::dec
+                  << " bitmap: w=" << ft_face_->glyph->bitmap.width
+                  << " h=" << ft_face_->glyph->bitmap.rows
+                  << " pitch=" << ft_face_->glyph->bitmap.pitch
+                  << " buffer=" << (void*)ft_face_->glyph->bitmap.buffer << std::endl;
+        ++load_count;
+    }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                 ft_face_->glyph->bitmap.width,
+                 ft_face_->glyph->bitmap.rows,
+                 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+                 ft_face_->glyph->bitmap.buffer);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    Character character = {
+        texture,
+        (int)ft_face_->glyph->bitmap.width,
+        (int)ft_face_->glyph->bitmap.rows,
+        ft_face_->glyph->bitmap_left,
+        ft_face_->glyph->bitmap_top,
+        (int)ft_face_->glyph->advance.x
+    };
+
+    characters_[c] = character;
+    return true;
+}
+
 bool HUDOverlay::initialize(uint32_t display_width, uint32_t display_height,
                             const std::string& font_path) {
     display_width_ = display_width;
@@ -523,6 +574,36 @@ void HUDOverlay::renderText() {
     }
 }
 
+bool HUDOverlay::measureText(const std::string& text, float scale, float& out_width,
+                             float& out_ascent, float& out_descent) {
+    out_width = 0.0f;
+    out_ascent = 0.0f;
+    out_descent = 0.0f;
+    if (!ft_face_) {
+        return false;
+    }
+
+    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
+    std::u32string unicode_text;
+    try {
+        unicode_text = converter.from_bytes(text);
+    } catch (...) {
+        return false;
+    }
+
+    for (char32_t c : unicode_text) {
+        if (!loadGlyph(c)) {
+            continue;
+        }
+        const Character& ch = characters_[c];
+        out_width += (ch.advance >> 6) * scale;
+        out_ascent = std::max(out_ascent, ch.bearing_y * scale);
+        out_descent = std::max(out_descent, (ch.height - ch.bearing_y) * scale);
+    }
+
+    return true;
+}
+
 void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
                                   float scale, const Color& color) {
     if (characters_.empty()) {
@@ -569,52 +650,10 @@ void HUDOverlay::renderTextDirect(const std::string& text, float x, float y,
     }
 
     for (char32_t c : unicode_text) {
-        auto it = characters_.find(c);
-        if (it == characters_.end()) {
-            static int load_count = 0;
-            if (FT_Load_Char(ft_face_, c, FT_LOAD_RENDER)) {
-                continue;
-            }
-
-            if (load_count <= 10) {
-                std::cout << "  Glyph U+" << std::hex << c << std::dec
-                          << " bitmap: w=" << ft_face_->glyph->bitmap.width
-                          << " h=" << ft_face_->glyph->bitmap.rows
-                          << " pitch=" << ft_face_->glyph->bitmap.pitch
-                          << " buffer=" << (void*)ft_face_->glyph->bitmap.buffer << std::endl;
-            }
-
-            GLuint texture;
-            glGenTextures(1, &texture);
-            glBindTexture(GL_TEXTURE_2D, texture);
-
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                         ft_face_->glyph->bitmap.width,
-                         ft_face_->glyph->bitmap.rows,
-                         0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-                         ft_face_->glyph->bitmap.buffer);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-            Character character = {
-                texture,
-                (int)ft_face_->glyph->bitmap.width,
-                (int)ft_face_->glyph->bitmap.rows,
-                ft_face_->glyph->bitmap_left,
-                ft_face_->glyph->bitmap_top,
-                (int)ft_face_->glyph->advance.x
-            };
-
-            characters_[c] = character;
-            it = characters_.find(c);
+        if (!loadGlyph(c)) {
+            continue;
         }
-
-        const Character& ch = it->second;
+        const Character& ch = characters_[c];
 
         float xpos = x + ch.bearing_x * scale;
         float ypos = y - (ch.height - ch.bearing_y) * scale;

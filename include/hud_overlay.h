@@ -101,6 +101,8 @@ public:
 
     // Отрисовка текста в пиксельных координатах
     void renderTextDirect(const std::string& text, float x, float y, float scale, const Color& color);
+    bool measureText(const std::string& text, float scale, float& out_width,
+                     float& out_ascent, float& out_descent);
 
 private:
     void renderCrosshair();
@@ -110,6 +112,7 @@ private:
     void compileShader(const char* source, GLenum type, GLuint& shader);
     void linkProgram(GLuint vertex, GLuint fragment, GLuint& program);
     bool loadFont(const std::string& font_path);
+    bool loadGlyph(char32_t codepoint);
 
     uint32_t display_width_;
     uint32_t display_height_;

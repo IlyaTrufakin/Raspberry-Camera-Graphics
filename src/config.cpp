@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 static std::string trim(const std::string& s) {
@@ -28,6 +29,25 @@ static std::vector<std::string> splitComma(const std::string& s) {
     std::string item;
     std::istringstream iss(s);
     while (std::getline(iss, item, ',')) {
+        parts.push_back(trim(item));
+    }
+    return parts;
+}
+
+static std::vector<std::string> splitByAny(const std::string& s, const std::string& delims) {
+    std::vector<std::string> parts;
+    std::string item;
+    for (char ch : s) {
+        if (delims.find(ch) != std::string::npos) {
+            if (!item.empty()) {
+                parts.push_back(trim(item));
+                item.clear();
+            }
+        } else {
+            item.push_back(ch);
+        }
+    }
+    if (!item.empty()) {
         parts.push_back(trim(item));
     }
     return parts;
@@ -95,6 +115,23 @@ static bool parseLineStyle(const std::string& s, int& out) {
     return parseInt(s, out);
 }
 
+static bool parseAlign(const std::string& s, int& out) {
+    std::string v = toLower(trim(s));
+    if (v == "left" || v == "l") {
+        out = 0;
+        return true;
+    }
+    if (v == "right" || v == "r") {
+        out = 1;
+        return true;
+    }
+    if (v == "center" || v == "centre" || v == "c" || v == "middle" || v == "m") {
+        out = 2;
+        return true;
+    }
+    return parseInt(s, out);
+}
+
 static bool parseColor(const std::string& s, Color& color) {
     auto parts = splitComma(s);
     if (parts.size() < 4) {
@@ -147,6 +184,9 @@ bool loadConfig(const std::string& path, AppConfig& config) {
     bool cleared_dynamic = false;
     bool cleared_registers = false;
     bool cleared_status = false;
+    std::map<std::string, size_t> status_index;
+    std::vector<std::string> status_ids;
+    std::map<std::string, size_t> rect_index;
 
     std::string section;
     std::string line;
@@ -155,8 +195,14 @@ bool loadConfig(const std::string& path, AppConfig& config) {
         if (line.empty() || line[0] == '#' || line[0] == ';') {
             continue;
         }
+        if (line.front() == '[' && line.back() == ']') {
+            section = toLower(trim(line.substr(1, line.size() - 2)));
+            continue;
+        }
         size_t hash_pos = line.find('#');
-        size_t semi_pos = line.find(';');
+        size_t semi_pos = (section == "status.bits" || section == "rect.static")
+                              ? std::string::npos
+                              : line.find(';');
         size_t cut_pos = std::string::npos;
         if (hash_pos != std::string::npos) {
             cut_pos = hash_pos;
@@ -169,10 +215,6 @@ bool loadConfig(const std::string& path, AppConfig& config) {
             if (line.empty()) {
                 continue;
             }
-        }
-        if (line.front() == '[' && line.back() == ']') {
-            section = toLower(trim(line.substr(1, line.size() - 2)));
-            continue;
         }
 
         size_t eq = line.find('=');
@@ -481,24 +523,117 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 config.static_texts.push_back(item);
             }
         } else if (section == "rect.static") {
-            auto parts = splitComma(value);
-            if (parts.size() >= 8) {
+            size_t dot = key.find('.');
+            if (dot != std::string::npos) {
+                std::string id = key.substr(0, dot);
+                std::string field = key.substr(dot + 1);
                 if (!cleared_static_rects) {
                     config.static_rects.clear();
                     cleared_static_rects = true;
+                    rect_index.clear();
                 }
-                StaticRectConfig item;
-                parseFloat(parts[0], item.x);
-                parseFloat(parts[1], item.y);
-                parseFloat(parts[2], item.width);
-                parseFloat(parts[3], item.height);
-                float r = 1, g = 1, b = 1, a = 1;
-                parseFloat(parts[4], r);
-                parseFloat(parts[5], g);
-                parseFloat(parts[6], b);
-                parseFloat(parts[7], a);
-                item.color = Color(r, g, b, a);
-                config.static_rects.push_back(item);
+                size_t idx = 0;
+                auto it = rect_index.find(id);
+                if (it == rect_index.end()) {
+                    config.static_rects.push_back(StaticRectConfig());
+                    idx = config.static_rects.size() - 1;
+                    rect_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                StaticRectConfig& item = config.static_rects[idx];
+                if (field == "x") {
+                    parseFloat(value, item.x);
+                } else if (field == "y") {
+                    parseFloat(value, item.y);
+                } else if (field == "width" || field == "w") {
+                    parseFloat(value, item.width);
+                } else if (field == "height" || field == "h") {
+                    parseFloat(value, item.height);
+                } else if (field == "color") {
+                    parseColor(value, item.color);
+                } else if (field == "text") {
+                    item.text = value;
+                } else if (field == "text_align" || field == "align") {
+                    parseAlign(value, item.text_align);
+                } else if (field == "text_padding" || field == "text_pad" || field == "pad") {
+                    parseFloat(value, item.text_padding);
+                } else if (field == "text_scale") {
+                    parseFloat(value, item.text_scale);
+                } else if (field == "text_color" || field == "text.color") {
+                    parseColor(value, item.text_color);
+                }
+            } else if (value.find(':') != std::string::npos) {
+                std::string id = key;
+                if (!cleared_static_rects) {
+                    config.static_rects.clear();
+                    cleared_static_rects = true;
+                    rect_index.clear();
+                }
+                size_t idx = 0;
+                auto it = rect_index.find(id);
+                if (it == rect_index.end()) {
+                    config.static_rects.push_back(StaticRectConfig());
+                    idx = config.static_rects.size() - 1;
+                    rect_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                StaticRectConfig& item = config.static_rects[idx];
+                auto fields = splitByAny(value, ";|");
+                for (const auto& entry : fields) {
+                    if (entry.empty()) {
+                        continue;
+                    }
+                    size_t colon = entry.find(':');
+                    if (colon == std::string::npos) {
+                        continue;
+                    }
+                    std::string field = toLower(trim(entry.substr(0, colon)));
+                    std::string field_value = trim(entry.substr(colon + 1));
+                    if (field == "x") {
+                        parseFloat(field_value, item.x);
+                    } else if (field == "y") {
+                        parseFloat(field_value, item.y);
+                    } else if (field == "width" || field == "w") {
+                        parseFloat(field_value, item.width);
+                    } else if (field == "height" || field == "h") {
+                        parseFloat(field_value, item.height);
+                    } else if (field == "color") {
+                        parseColor(field_value, item.color);
+                    } else if (field == "text") {
+                        item.text = field_value;
+                    } else if (field == "text_align" || field == "align") {
+                        parseAlign(field_value, item.text_align);
+                    } else if (field == "text_padding" || field == "text_pad" || field == "pad") {
+                        parseFloat(field_value, item.text_padding);
+                    } else if (field == "text_scale") {
+                        parseFloat(field_value, item.text_scale);
+                    } else if (field == "text_color" || field == "text.color") {
+                        parseColor(field_value, item.text_color);
+                    }
+                }
+            } else {
+                auto parts = splitComma(value);
+                if (parts.size() >= 8) {
+                    if (!cleared_static_rects) {
+                        config.static_rects.clear();
+                        cleared_static_rects = true;
+                        rect_index.clear();
+                    }
+                    StaticRectConfig item;
+                    parseFloat(parts[0], item.x);
+                    parseFloat(parts[1], item.y);
+                    parseFloat(parts[2], item.width);
+                    parseFloat(parts[3], item.height);
+                    float r = 1, g = 1, b = 1, a = 1;
+                    parseFloat(parts[4], r);
+                    parseFloat(parts[5], g);
+                    parseFloat(parts[6], b);
+                    parseFloat(parts[7], a);
+                    item.color = Color(r, g, b, a);
+                    config.static_rects.push_back(item);
+                }
             }
         } else if (section == "text.dynamic") {
             auto parts = splitComma(value);
@@ -521,11 +656,126 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 config.dynamic_texts.push_back(item);
             }
         } else if (section == "status.bits") {
+            size_t dot = key.find('.');
+            if (dot != std::string::npos) {
+                std::string id = key.substr(0, dot);
+                std::string field = key.substr(dot + 1);
+                if (!cleared_status) {
+                    config.status_bits.clear();
+                    cleared_status = true;
+                    status_index.clear();
+                    status_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = status_index.find(id);
+                if (it == status_index.end()) {
+                    config.status_bits.push_back(StatusBitConfig());
+                    status_ids.push_back(id);
+                    idx = config.status_bits.size() - 1;
+                    status_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                StatusBitConfig& item = config.status_bits[idx];
+                if (field == "name" || field == "source" || field == "register") {
+                    item.name = value;
+                } else if (field == "bit") {
+                    uint32_t bit_tmp = 0;
+                    if (parseUInt(value, bit_tmp) && bit_tmp <= 31) {
+                        item.bit = static_cast<uint8_t>(bit_tmp);
+                    }
+                } else if (field == "x") {
+                    parseFloat(value, item.x);
+                } else if (field == "y") {
+                    parseFloat(value, item.y);
+                } else if (field == "width") {
+                    parseFloat(value, item.width);
+                } else if (field == "height") {
+                    parseFloat(value, item.height);
+                } else if (field == "color_on" || field == "on_color" || field == "color.on") {
+                    parseColor(value, item.color_on);
+                } else if (field == "color_off" || field == "off_color" || field == "color.off") {
+                    parseColor(value, item.color_off);
+                } else if (field == "text") {
+                    item.text = value;
+                } else if (field == "text_align" || field == "align") {
+                    parseAlign(value, item.text_align);
+                } else if (field == "text_padding" || field == "text_pad" || field == "pad") {
+                    parseFloat(value, item.text_padding);
+                } else if (field == "text_scale") {
+                    parseFloat(value, item.text_scale);
+                } else if (field == "text_color" || field == "text.color") {
+                    parseColor(value, item.text_color);
+                }
+            } else if (value.find(':') != std::string::npos) {
+                std::string id = key;
+                if (!cleared_status) {
+                    config.status_bits.clear();
+                    cleared_status = true;
+                    status_index.clear();
+                    status_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = status_index.find(id);
+                if (it == status_index.end()) {
+                    config.status_bits.push_back(StatusBitConfig());
+                    status_ids.push_back(id);
+                    idx = config.status_bits.size() - 1;
+                    status_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                StatusBitConfig& item = config.status_bits[idx];
+                auto fields = splitByAny(value, ";|");
+                for (const auto& entry : fields) {
+                    if (entry.empty()) {
+                        continue;
+                    }
+                    size_t colon = entry.find(':');
+                    if (colon == std::string::npos) {
+                        continue;
+                    }
+                    std::string field = toLower(trim(entry.substr(0, colon)));
+                    std::string field_value = trim(entry.substr(colon + 1));
+                    if (field == "name" || field == "source" || field == "register") {
+                        item.name = field_value;
+                    } else if (field == "bit") {
+                        uint32_t bit_tmp = 0;
+                        if (parseUInt(field_value, bit_tmp) && bit_tmp <= 31) {
+                            item.bit = static_cast<uint8_t>(bit_tmp);
+                        }
+                    } else if (field == "x") {
+                        parseFloat(field_value, item.x);
+                    } else if (field == "y") {
+                        parseFloat(field_value, item.y);
+                    } else if (field == "width" || field == "w") {
+                        parseFloat(field_value, item.width);
+                    } else if (field == "height" || field == "h") {
+                        parseFloat(field_value, item.height);
+                    } else if (field == "color_on" || field == "on_color" || field == "color.on" || field == "on") {
+                        parseColor(field_value, item.color_on);
+                    } else if (field == "color_off" || field == "off_color" || field == "color.off" || field == "off") {
+                        parseColor(field_value, item.color_off);
+                    } else if (field == "text") {
+                        item.text = field_value;
+                    } else if (field == "text_align" || field == "align") {
+                        parseAlign(field_value, item.text_align);
+                    } else if (field == "text_padding" || field == "text_pad" || field == "pad") {
+                        parseFloat(field_value, item.text_padding);
+                    } else if (field == "text_scale") {
+                        parseFloat(field_value, item.text_scale);
+                    } else if (field == "text_color" || field == "text.color") {
+                        parseColor(field_value, item.text_color);
+                    }
+                }
+            } else {
             auto parts = splitComma(value);
             if (parts.size() >= 14) {
                 if (!cleared_status) {
                     config.status_bits.clear();
                     cleared_status = true;
+                    status_index.clear();
+                    status_ids.clear();
                 }
                 StatusBitConfig item;
                 item.name = parts[0];
@@ -550,7 +800,16 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 item.color_on = Color(r_on, g_on, b_on, a_on);
                 item.color_off = Color(r_off, g_off, b_off, a_off);
                 config.status_bits.push_back(item);
+                status_index[key] = config.status_bits.size() - 1;
+                status_ids.push_back(std::string());
             }
+            }
+        }
+    }
+
+    for (size_t i = 0; i < config.status_bits.size() && i < status_ids.size(); ++i) {
+        if (config.status_bits[i].name.empty() && !status_ids[i].empty()) {
+            config.status_bits[i].name = status_ids[i];
         }
     }
 
