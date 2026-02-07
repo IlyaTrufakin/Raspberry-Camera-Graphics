@@ -11,6 +11,13 @@ static std::string trim(const std::string& s) {
     while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) {
         ++start;
     }
+    // Ignore UTF-8 BOM on the first logical token (common on Windows-edited INI files).
+    if (start + 2 < s.size() &&
+        static_cast<unsigned char>(s[start]) == 0xEF &&
+        static_cast<unsigned char>(s[start + 1]) == 0xBB &&
+        static_cast<unsigned char>(s[start + 2]) == 0xBF) {
+        start += 3;
+    }
     size_t end = s.size();
     while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) {
         --end;

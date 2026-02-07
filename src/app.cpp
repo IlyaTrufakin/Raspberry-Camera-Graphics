@@ -27,6 +27,14 @@ bool App::loadConfiguration(const std::string& path) {
     bool ok = loadConfig(path, config_);
     if (!ok) {
         std::cout << "Config file not found, using defaults" << std::endl;
+    } else {
+        std::cout << "Config loaded: " << path << std::endl;
+        std::cout << "Video transform: flip_horizontal="
+                  << (config_.video.flip_horizontal ? "true" : "false")
+                  << " flip_vertical="
+                  << (config_.video.flip_vertical ? "true" : "false")
+                  << " rotate=" << config_.video.rotate
+                  << std::endl;
     }
     return ok;
 }
@@ -434,8 +442,11 @@ void App::runLoop() {
 
     while (true) {
         FrameBuffer* frame = camera_.getNextFrame();
+        bool got_frame = false;
         if (frame) {
             renderer_.uploadFrame(camera_, frame);
+            camera_.returnFrame(frame);
+            got_frame = true;
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -446,11 +457,10 @@ void App::runLoop() {
         }
 
         renderer_.draw(hud_);
-        if (frame) {
-            camera_.returnFrame(frame);
-        }
 
-        frame_count++;
+        if (got_frame) {
+            frame_count++;
+        }
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();
         if (elapsed >= 1) {
             current_fps = frame_count;
