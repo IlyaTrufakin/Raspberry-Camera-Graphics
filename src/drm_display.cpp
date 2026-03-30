@@ -10,33 +10,50 @@ DRMDisplay::~DRMDisplay() {
 }
 
 bool DRMDisplay::initialize() {
-    fd_ = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
-    if (fd_ < 0) {
-        std::cerr << "Failed to open DRM device" << std::endl;
-        return false;
-    }
-
-    drmModeRes* resources = drmModeGetResources(fd_);
-    if (!resources) {
-        std::cerr << "Failed to get DRM resources" << std::endl;
-        return false;
-    }
-
+    drmModeRes* resources = nullptr;
     drmModeConnector* connector = nullptr;
-    for (int i = 0; i < resources->count_connectors; i++) {
-        connector = drmModeGetConnector(fd_, resources->connectors[i]);
-        if (connector->connection == DRM_MODE_CONNECTED) {
-            connector_id_ = connector->connector_id;
-            mode_ = connector->modes[0];
-            break;
+    
+    for (int i = 0; i < 4; ++i) {
+        char path[32];
+        snprintf(path, sizeof(path), "/dev/dri/card%d", i);
+        int fd = open(path, O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            continue;
         }
-        drmModeFreeConnector(connector);
-        connector = nullptr;
+
+        resources = drmModeGetResources(fd);
+        if (!resources) {
+            close(fd);
+            continue;
+        }
+
+        for (int j = 0; j < resources->count_connectors; j++) {
+            connector = drmModeGetConnector(fd, resources->connectors[j]);
+            if (connector && connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0) {
+                fd_ = fd;
+                connector_id_ = connector->connector_id;
+                mode_ = connector->modes[0];
+                std::cout << "Using DRM device: " << path << std::endl;
+                break;
+            }
+            if (connector) {
+                drmModeFreeConnector(connector);
+                connector = nullptr;
+            }
+        }
+
+        if (connector) {
+            break; // Found a valid connector
+        }
+
+        drmModeFreeResources(resources);
+        resources = nullptr;
+        close(fd);
+        fd_ = -1;
     }
 
-    if (!connector) {
-        std::cerr << "No connected connector found" << std::endl;
-        drmModeFreeResources(resources);
+    if (fd_ < 0 || !connector || !resources) {
+        std::cerr << "Failed to find any DRM device with a connected display" << std::endl;
         return false;
     }
 
@@ -44,6 +61,16 @@ bool DRMDisplay::initialize() {
     if (encoder) {
         crtc_id_ = encoder->crtc_id;
         drmModeFreeEncoder(encoder);
+    } else {
+        // Fallback if encoder_id is 0
+        for (int i = 0; i < connector->count_encoders; i++) {
+            encoder = drmModeGetEncoder(fd_, connector->encoders[i]);
+            if (encoder) {
+                crtc_id_ = encoder->crtc_id;
+                drmModeFreeEncoder(encoder);
+                break;
+            }
+        }
     }
 
     saved_crtc_ = drmModeGetCrtc(fd_, crtc_id_);
