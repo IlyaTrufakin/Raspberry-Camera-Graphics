@@ -416,8 +416,28 @@ void CameraStream::returnFrame(FrameBuffer* frame) {
     if (it != pending_requests_.end()) {
         Request *request = it->second;
         request->reuse(Request::ReuseBuffers);
+        {
+            std::lock_guard<std::mutex> lock(runtime_control_mutex_);
+            if (runtime_control_enabled_) {
+                request->controls().set(controls::AeEnable, false);
+                if (runtime_exposure_time_us_ > 0) {
+                    request->controls().set(controls::ExposureTime,
+                                            static_cast<int64_t>(runtime_exposure_time_us_));
+                }
+                if (runtime_analogue_gain_ > 0.0f) {
+                    request->controls().set(controls::AnalogueGain, runtime_analogue_gain_);
+                }
+            }
+        }
         camera_->queueRequest(request);
     }
+}
+
+void CameraStream::setRuntimeExposureControl(bool enabled, int exposure_time_us, float analogue_gain) {
+    std::lock_guard<std::mutex> lock(runtime_control_mutex_);
+    runtime_control_enabled_ = enabled;
+    runtime_exposure_time_us_ = exposure_time_us;
+    runtime_analogue_gain_ = analogue_gain;
 }
 
 uint8_t* CameraStream::getFrameData(FrameBuffer* frame, uint32_t& stride) {
@@ -491,4 +511,34 @@ bool CameraStream::getFramePlanes(FrameBuffer* frame, PlaneData& y, PlaneData& u
     v.height = uv_height;
 
     return true;
+}
+
+bool CameraStream::getFrameCaptureStats(FrameBuffer* frame, CaptureStats& stats) const {
+    if (!frame) {
+        return false;
+    }
+
+    auto it = pending_requests_.find(frame);
+    if (it == pending_requests_.end() || !it->second) {
+        return false;
+    }
+
+    stats = CaptureStats{};
+
+    const ControlList& md = it->second->metadata();
+
+    if (auto exposure = md.get(controls::ExposureTime)) {
+        stats.has_exposure_time = true;
+        stats.exposure_time_us = static_cast<int64_t>(*exposure);
+    }
+    if (auto gain = md.get(controls::AnalogueGain)) {
+        stats.has_analogue_gain = true;
+        stats.analogue_gain = static_cast<float>(*gain);
+    }
+    if (auto frame_duration = md.get(controls::FrameDuration)) {
+        stats.has_frame_duration = true;
+        stats.frame_duration_us = static_cast<int64_t>(*frame_duration);
+    }
+
+    return stats.has_exposure_time || stats.has_analogue_gain || stats.has_frame_duration;
 }

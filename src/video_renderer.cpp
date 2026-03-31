@@ -1,5 +1,6 @@
 #include "video_renderer.h"
 
+#include <algorithm>
 #include <iostream>
 
 #ifndef GL_UNPACK_ROW_LENGTH_EXT
@@ -23,9 +24,17 @@ varying vec2 vTexCoord;
 uniform sampler2D uTexY;
 uniform sampler2D uTexU;
 uniform sampler2D uTexV;
+uniform float uLumaGain;
+uniform float uGamma;
+uniform float uBlackLevel;
+uniform float uWhiteLevel;
 
 void main() {
     float y = texture2D(uTexY, vTexCoord).r;
+    float w = max(uWhiteLevel - uBlackLevel, 0.001);
+    y = clamp((y - uBlackLevel) / w, 0.0, 1.0);
+    y = clamp(y * uLumaGain, 0.0, 1.0);
+    y = pow(y, max(uGamma, 0.01));
     float u = texture2D(uTexU, vTexCoord).r - 0.5;
     float v = texture2D(uTexV, vTexCoord).r - 0.5;
     float r = y + 1.402 * v;
@@ -44,6 +53,13 @@ VideoRenderer::~VideoRenderer() {
 bool VideoRenderer::initialize(DRMDisplay& display, const AppConfig& config,
                                float left_edge, float right_edge) {
     display_ = &display;
+    luma_gain_ = std::max(0.1f, config.video.luma_gain);
+    gamma_ = std::max(0.01f, config.video.gamma);
+    black_level_ = std::max(0.0f, std::min(1.0f, config.video.black_level));
+    white_level_ = std::max(0.0f, std::min(1.0f, config.video.white_level));
+    if (white_level_ <= black_level_) {
+        white_level_ = std::min(1.0f, black_level_ + 0.01f);
+    }
 
     GLuint vs = 0;
     GLuint fs = 0;
@@ -218,6 +234,10 @@ void VideoRenderer::draw(HUDOverlay& hud) {
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, textures_[2]);
     glUniform1i(glGetUniformLocation(program_, "uTexV"), 2);
+    glUniform1f(glGetUniformLocation(program_, "uLumaGain"), luma_gain_);
+    glUniform1f(glGetUniformLocation(program_, "uGamma"), gamma_);
+    glUniform1f(glGetUniformLocation(program_, "uBlackLevel"), black_level_);
+    glUniform1f(glGetUniformLocation(program_, "uWhiteLevel"), white_level_);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     GLint posLoc = glGetAttribLocation(program_, "aPosition");

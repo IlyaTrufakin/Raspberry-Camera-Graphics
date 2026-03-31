@@ -28,21 +28,18 @@ struct TextPosition {
         : x(x), y(y), text(text), scale(scale), color(color) {}
 };
 
-// Параметры прицела/центра
-struct CrosshairConfig {
+// Параметры линейного объекта
+struct LineObjectRender {
     bool enabled = true;
+    float x0_ndc = 0.0f;
+    float y0_ndc = 0.0f;
+    float x1_ndc = 0.0f;
+    float y1_ndc = 0.0f;
     Color color = Color(0.0f, 1.0f, 0.0f, 0.8f);
-    float center_x = 0.5f;
-    float center_y = 0.5f;
-    float line_length = 0.05f;
     float line_width = 2.0f;
-    float gap = 0.01f;
-    int line_style = 0;
+    int line_style = 0; // 0 = solid, 1 = dashed
     float dash_length = 0.05f;
     float dash_gap = 0.03f;
-    bool modbus_override = true;
-    float h_limit_left = 0.0f;
-    float h_limit_right = 1.0f;
 };
 
 // Фоновая панель для текста (нормализованные координаты)
@@ -83,8 +80,8 @@ public:
     bool initialize(uint32_t display_width, uint32_t display_height,
                    const std::string& font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
 
-    // Параметры перекрестия
-    void setCrosshairConfig(const CrosshairConfig& config);
+    // Линейные объекты HUD
+    void setLineObjects(const std::vector<LineObjectRender>& lines);
 
     void setPanelConfigs(const PanelConfig& left, const PanelConfig& right);
 
@@ -109,7 +106,7 @@ public:
                      float& out_ascent, float& out_descent);
 
 private:
-    void renderCrosshair();
+    void renderLineObjects(const std::vector<LineObjectRender>& lines);
     void renderPanel(const PanelConfig& config);
     void renderRectangles();
     void renderText();
@@ -121,7 +118,7 @@ private:
     uint32_t display_width_;
     uint32_t display_height_;
 
-    CrosshairConfig crosshair_config_;
+    std::vector<LineObjectRender> line_objects_;
     PanelConfig panel_left_;
     PanelConfig panel_right_;
     std::vector<TextPosition> static_text_positions_;

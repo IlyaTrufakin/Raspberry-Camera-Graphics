@@ -36,6 +36,10 @@ private:
     bool textures_initialized_ = false;
     uint32_t tex_w_ = 0;
     uint32_t tex_h_ = 0;
+    float luma_gain_ = 1.0f;
+    float gamma_ = 1.0f;
+    float black_level_ = 0.0f;
+    float white_level_ = 1.0f;
 
 
 };

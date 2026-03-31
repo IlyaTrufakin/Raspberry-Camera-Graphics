@@ -15,6 +15,10 @@ struct VideoConfig {
     bool flip_horizontal = false;
     bool flip_vertical = false;
     int rotate = 0; // 0, 90, 180, 270
+    float luma_gain = 1.0f;   // post-process gain in renderer
+    float gamma = 1.0f;       // post-process gamma (<1 brighter shadows)
+    float black_level = 0.0f; // 0..1
+    float white_level = 1.0f; // 0..1, should be > black_level
 };
 
 struct StaticTextConfig {
@@ -128,10 +132,55 @@ struct RoiConfig {
     float height = 1.0f;
 };
 
+struct VerticalLineConfig {
+    std::string name;
+    bool enabled = true;
+    std::string offset_var;
+    Color color = Color(1.0f, 1.0f, 0.0f, 0.9f);
+    float line_width = 2.0f;
+    int line_style = 0; // 0 = solid, 1 = dashed
+    float dash_length_px = 20.0f;
+    float dash_gap_px = 12.0f;
+};
+
+struct HorizontalLineConfig {
+    std::string name;
+    bool enabled = true;
+    std::string offset_var;
+    Color color = Color(1.0f, 1.0f, 0.0f, 0.9f);
+    float line_width = 2.0f;
+    int line_style = 0; // 0 = solid, 1 = dashed
+    float dash_length_px = 20.0f;
+    float dash_gap_px = 12.0f;
+};
+
+struct ExposureControlConfig {
+    bool enabled = false;
+    float roi_x = 0.35f;
+    float roi_y = 0.35f;
+    float roi_width = 0.30f;
+    float roi_height = 0.30f;
+    int sample_step = 4;
+    int update_every_frames = 2;
+    int target_luma = 90;
+    int high_luma = 220;
+    int min_exposure_us = 200;
+    int max_exposure_us = 20000;
+    float min_gain = 1.0f;
+    float max_gain = 8.0f;
+    float exposure_step_up = 1.08f;
+    float exposure_step_down = 0.60f;
+    float gain_step_up = 0.10f;
+    float gain_step_down = 0.20f;
+    int highlight_min_exposure_us = 0; // 0 = disabled
+    float highlight_min_gain = 0.0f;   // 0 = disabled
+    bool use_gain = true;
+    bool debug = false;
+};
+
 struct AppConfig {
     VideoConfig video;
     CameraSettings camera;
-    CrosshairConfig crosshair;
     PanelConfig panel_left;
     PanelConfig panel_right;
     RoiConfig roi;
@@ -142,6 +191,9 @@ struct AppConfig {
     std::vector<StaticRectConfig> static_rects;
     std::vector<DynamicTextConfig> dynamic_texts;
     std::vector<StatusBitConfig> status_bits;
+    std::vector<VerticalLineConfig> vertical_lines;
+    std::vector<HorizontalLineConfig> horizontal_lines;
+    ExposureControlConfig exposure_control;
     ModbusSettings modbus;
 };
 

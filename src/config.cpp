@@ -158,7 +158,6 @@ static bool parseColor(const std::string& s, Color& color) {
 static void setDefaults(AppConfig& config) {
     config.video = VideoConfig();
     config.camera = CameraSettings();
-    config.crosshair = CrosshairConfig();
     config.panel_left = PanelConfig();
     config.panel_right = PanelConfig();
     config.roi = RoiConfig();
@@ -177,6 +176,9 @@ static void setDefaults(AppConfig& config) {
     config.dynamic_texts.clear();
 
     config.status_bits.clear();
+    config.vertical_lines.clear();
+    config.horizontal_lines.clear();
+    config.exposure_control = ExposureControlConfig();
 }
 
 bool loadConfig(const std::string& path, AppConfig& config) {
@@ -192,9 +194,15 @@ bool loadConfig(const std::string& path, AppConfig& config) {
     bool cleared_dynamic = false;
     bool cleared_registers = false;
     bool cleared_status = false;
+    bool cleared_vlines = false;
+    bool cleared_hlines = false;
     std::map<std::string, size_t> status_index;
     std::vector<std::string> status_ids;
     std::map<std::string, size_t> rect_index;
+    std::map<std::string, size_t> vline_index;
+    std::vector<std::string> vline_ids;
+    std::map<std::string, size_t> hline_index;
+    std::vector<std::string> hline_ids;
 
     std::vector<std::string> logical_lines;
     {
@@ -215,7 +223,10 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 current_section = toLower(trim(t.substr(1, t.size() - 2)));
                 continue;
             }
-            bool allow_continuation = (current_section == "status.bits" || current_section == "rect.static");
+            bool allow_continuation = (current_section == "status.bits" ||
+                                       current_section == "rect.static" ||
+                                       current_section == "vertical.lines" ||
+                                       current_section == "horizontal.lines");
             size_t eq_pos = t.find('=');
             if (eq_pos == std::string::npos) {
                 if (allow_continuation && !pending.empty()) {
@@ -256,7 +267,8 @@ bool loadConfig(const std::string& path, AppConfig& config) {
             continue;
         }
         size_t hash_pos = line.find('#');
-        size_t semi_pos = (section == "status.bits" || section == "rect.static")
+        size_t semi_pos = (section == "status.bits" || section == "rect.static" ||
+                           section == "vertical.lines" || section == "horizontal.lines")
                               ? std::string::npos
                               : line.find(';');
         size_t cut_pos = std::string::npos;
@@ -298,6 +310,14 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                         config.video.rotate = tmp;
                     }
                 }
+            } else if (key == "luma_gain") {
+                parseFloat(value, config.video.luma_gain);
+            } else if (key == "gamma") {
+                parseFloat(value, config.video.gamma);
+            } else if (key == "black_level") {
+                parseFloat(value, config.video.black_level);
+            } else if (key == "white_level") {
+                parseFloat(value, config.video.white_level);
             }
         } else if (section == "camera") {
             if (key == "ae_enable") {
@@ -391,32 +411,6 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                     }
                 }
             }
-        } else if (section == "crosshair") {
-            if (key == "enabled") {
-                parseBool(value, config.crosshair.enabled);
-            } else if (key == "color") {
-                parseColor(value, config.crosshair.color);
-            } else if (key == "center") {
-                auto parts = splitComma(value);
-                if (parts.size() >= 2) {
-                    parseFloat(parts[0], config.crosshair.center_x);
-                    parseFloat(parts[1], config.crosshair.center_y);
-                }
-            } else if (key == "line_length") {
-                parseFloat(value, config.crosshair.line_length);
-            } else if (key == "line_width") {
-                parseFloat(value, config.crosshair.line_width);
-            } else if (key == "gap") {
-                parseFloat(value, config.crosshair.gap);
-            } else if (key == "line_style") {
-                parseLineStyle(value, config.crosshair.line_style);
-            } else if (key == "dash_length") {
-                parseFloat(value, config.crosshair.dash_length);
-            } else if (key == "dash_gap") {
-                parseFloat(value, config.crosshair.dash_gap);
-            } else if (key == "modbus_override") {
-                parseBool(value, config.crosshair.modbus_override);
-            }
         } else if (section == "panel") {
             if (key == "enabled") {
                 parseBool(value, config.panel_left.enabled);
@@ -469,6 +463,71 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 config.hud_font_path = value;
             } else if (key == "text_vshift") {
                 parseFloat(value, config.hud_text_vshift);
+            }
+        } else if (section == "exposure.control") {
+            if (key == "enabled") {
+                parseBool(value, config.exposure_control.enabled);
+            } else if (key == "roi_x" || key == "x") {
+                parseFloat(value, config.exposure_control.roi_x);
+            } else if (key == "roi_y" || key == "y") {
+                parseFloat(value, config.exposure_control.roi_y);
+            } else if (key == "roi_width" || key == "width" || key == "w") {
+                parseFloat(value, config.exposure_control.roi_width);
+            } else if (key == "roi_height" || key == "height" || key == "h") {
+                parseFloat(value, config.exposure_control.roi_height);
+            } else if (key == "sample_step") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.sample_step = tmp;
+                }
+            } else if (key == "update_every_frames" || key == "update_frames") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.update_every_frames = tmp;
+                }
+            } else if (key == "target_luma" || key == "target_y") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.target_luma = tmp;
+                }
+            } else if (key == "high_luma" || key == "high_y") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.high_luma = tmp;
+                }
+            } else if (key == "min_exposure_us") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.min_exposure_us = tmp;
+                }
+            } else if (key == "max_exposure_us") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.max_exposure_us = tmp;
+                }
+            } else if (key == "min_gain") {
+                parseFloat(value, config.exposure_control.min_gain);
+            } else if (key == "max_gain") {
+                parseFloat(value, config.exposure_control.max_gain);
+            } else if (key == "exposure_step_up") {
+                parseFloat(value, config.exposure_control.exposure_step_up);
+            } else if (key == "exposure_step_down") {
+                parseFloat(value, config.exposure_control.exposure_step_down);
+            } else if (key == "gain_step_up") {
+                parseFloat(value, config.exposure_control.gain_step_up);
+            } else if (key == "gain_step_down") {
+                parseFloat(value, config.exposure_control.gain_step_down);
+            } else if (key == "highlight_min_exposure_us" || key == "highlight_floor_exposure_us") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.exposure_control.highlight_min_exposure_us = tmp;
+                }
+            } else if (key == "highlight_min_gain" || key == "highlight_floor_gain") {
+                parseFloat(value, config.exposure_control.highlight_min_gain);
+            } else if (key == "use_gain") {
+                parseBool(value, config.exposure_control.use_gain);
+            } else if (key == "debug") {
+                parseBool(value, config.exposure_control.debug);
             }
         } else if (section == "modbus") {
             if (key == "enabled") {
@@ -876,12 +935,206 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 status_ids.push_back(std::string());
             }
             }
+        } else if (section == "vertical.lines") {
+            size_t dot = key.find('.');
+            if (dot != std::string::npos) {
+                std::string id = key.substr(0, dot);
+                std::string field = key.substr(dot + 1);
+                if (!cleared_vlines) {
+                    config.vertical_lines.clear();
+                    cleared_vlines = true;
+                    vline_index.clear();
+                    vline_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = vline_index.find(id);
+                if (it == vline_index.end()) {
+                    config.vertical_lines.push_back(VerticalLineConfig());
+                    vline_ids.push_back(id);
+                    idx = config.vertical_lines.size() - 1;
+                    vline_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                VerticalLineConfig& item = config.vertical_lines[idx];
+                if (field == "enabled") {
+                    parseBool(value, item.enabled);
+                } else if (field == "offset_var" || field == "var" || field == "source") {
+                    item.offset_var = value;
+                } else if (field == "color") {
+                    parseColor(value, item.color);
+                } else if (field == "line_width") {
+                    parseFloat(value, item.line_width);
+                } else if (field == "line_style") {
+                    parseLineStyle(value, item.line_style);
+                } else if (field == "dash_length_px") {
+                    parseFloat(value, item.dash_length_px);
+                } else if (field == "dash_gap_px") {
+                    parseFloat(value, item.dash_gap_px);
+                } else if (field == "name") {
+                    item.name = value;
+                }
+            } else if (value.find(':') != std::string::npos) {
+                std::string id = key;
+                if (!cleared_vlines) {
+                    config.vertical_lines.clear();
+                    cleared_vlines = true;
+                    vline_index.clear();
+                    vline_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = vline_index.find(id);
+                if (it == vline_index.end()) {
+                    config.vertical_lines.push_back(VerticalLineConfig());
+                    vline_ids.push_back(id);
+                    idx = config.vertical_lines.size() - 1;
+                    vline_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                VerticalLineConfig& item = config.vertical_lines[idx];
+                auto fields = splitByAny(value, ";|");
+                for (const auto& entry : fields) {
+                    if (entry.empty()) {
+                        continue;
+                    }
+                    size_t colon = entry.find(':');
+                    if (colon == std::string::npos) {
+                        continue;
+                    }
+                    std::string field = toLower(trim(entry.substr(0, colon)));
+                    std::string field_value = trim(entry.substr(colon + 1));
+                    if (field == "enabled") {
+                        parseBool(field_value, item.enabled);
+                    } else if (field == "offset_var" || field == "var" || field == "source") {
+                        item.offset_var = field_value;
+                    } else if (field == "color") {
+                        parseColor(field_value, item.color);
+                    } else if (field == "line_width") {
+                        parseFloat(field_value, item.line_width);
+                    } else if (field == "line_style") {
+                        parseLineStyle(field_value, item.line_style);
+                    } else if (field == "dash_length_px") {
+                        parseFloat(field_value, item.dash_length_px);
+                    } else if (field == "dash_gap_px") {
+                        parseFloat(field_value, item.dash_gap_px);
+                    } else if (field == "name") {
+                        item.name = field_value;
+                    }
+                }
+            }
+        } else if (section == "horizontal.lines") {
+            size_t dot = key.find('.');
+            if (dot != std::string::npos) {
+                std::string id = key.substr(0, dot);
+                std::string field = key.substr(dot + 1);
+                if (!cleared_hlines) {
+                    config.horizontal_lines.clear();
+                    cleared_hlines = true;
+                    hline_index.clear();
+                    hline_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = hline_index.find(id);
+                if (it == hline_index.end()) {
+                    config.horizontal_lines.push_back(HorizontalLineConfig());
+                    hline_ids.push_back(id);
+                    idx = config.horizontal_lines.size() - 1;
+                    hline_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                HorizontalLineConfig& item = config.horizontal_lines[idx];
+                if (field == "enabled") {
+                    parseBool(value, item.enabled);
+                } else if (field == "offset_var" || field == "var" || field == "source") {
+                    item.offset_var = value;
+                } else if (field == "color") {
+                    parseColor(value, item.color);
+                } else if (field == "line_width") {
+                    parseFloat(value, item.line_width);
+                } else if (field == "line_style") {
+                    parseLineStyle(value, item.line_style);
+                } else if (field == "dash_length_px") {
+                    parseFloat(value, item.dash_length_px);
+                } else if (field == "dash_gap_px") {
+                    parseFloat(value, item.dash_gap_px);
+                } else if (field == "name") {
+                    item.name = value;
+                }
+            } else if (value.find(':') != std::string::npos) {
+                std::string id = key;
+                if (!cleared_hlines) {
+                    config.horizontal_lines.clear();
+                    cleared_hlines = true;
+                    hline_index.clear();
+                    hline_ids.clear();
+                }
+                size_t idx = 0;
+                auto it = hline_index.find(id);
+                if (it == hline_index.end()) {
+                    config.horizontal_lines.push_back(HorizontalLineConfig());
+                    hline_ids.push_back(id);
+                    idx = config.horizontal_lines.size() - 1;
+                    hline_index[id] = idx;
+                } else {
+                    idx = it->second;
+                }
+                HorizontalLineConfig& item = config.horizontal_lines[idx];
+                auto fields = splitByAny(value, ";|");
+                for (const auto& entry : fields) {
+                    if (entry.empty()) {
+                        continue;
+                    }
+                    size_t colon = entry.find(':');
+                    if (colon == std::string::npos) {
+                        continue;
+                    }
+                    std::string field = toLower(trim(entry.substr(0, colon)));
+                    std::string field_value = trim(entry.substr(colon + 1));
+                    if (field == "enabled") {
+                        parseBool(field_value, item.enabled);
+                    } else if (field == "offset_var" || field == "var" || field == "source") {
+                        item.offset_var = field_value;
+                    } else if (field == "color") {
+                        parseColor(field_value, item.color);
+                    } else if (field == "line_width") {
+                        parseFloat(field_value, item.line_width);
+                    } else if (field == "line_style") {
+                        parseLineStyle(field_value, item.line_style);
+                    } else if (field == "dash_length_px") {
+                        parseFloat(field_value, item.dash_length_px);
+                    } else if (field == "dash_gap_px") {
+                        parseFloat(field_value, item.dash_gap_px);
+                    } else if (field == "name") {
+                        item.name = field_value;
+                    }
+                }
+            }
         }
     }
 
     for (size_t i = 0; i < config.status_bits.size() && i < status_ids.size(); ++i) {
         if (config.status_bits[i].name.empty() && !status_ids[i].empty()) {
             config.status_bits[i].name = status_ids[i];
+        }
+    }
+
+    for (size_t i = 0; i < config.vertical_lines.size() && i < vline_ids.size(); ++i) {
+        if (config.vertical_lines[i].name.empty()) {
+            config.vertical_lines[i].name = vline_ids[i];
+        }
+        if (config.vertical_lines[i].offset_var.empty()) {
+            config.vertical_lines[i].offset_var = config.vertical_lines[i].name;
+        }
+    }
+
+    for (size_t i = 0; i < config.horizontal_lines.size() && i < hline_ids.size(); ++i) {
+        if (config.horizontal_lines[i].name.empty()) {
+            config.horizontal_lines[i].name = hline_ids[i];
+        }
+        if (config.horizontal_lines[i].offset_var.empty()) {
+            config.horizontal_lines[i].offset_var = config.horizontal_lines[i].name;
         }
     }
 

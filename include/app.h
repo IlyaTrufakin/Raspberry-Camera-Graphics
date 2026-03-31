@@ -10,6 +10,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <chrono>
 
 class App {
 public:
@@ -23,7 +24,9 @@ private:
 
     CameraConfig buildCameraConfig() const;
     void updateHud(const std::string& fps_text);
-    void updateCrosshair();
+    void updateLineObjects();
+    void initializeExposureControl();
+    void updateAdaptiveExposure(FrameBuffer* frame);
     void refreshModbusTextCache();
     void buildStaticHudCaches();
     float computeLeftEdge() const;
@@ -40,4 +43,10 @@ private:
     std::map<std::string, std::string> modbus_text_cache_;
     std::vector<TextPosition> static_rect_text_cache_;
     std::vector<TextPosition> status_bit_text_cache_;
+    bool exposure_control_active_ = false;
+    int exposure_time_us_ = 0;
+    float exposure_gain_ = 1.0f;
+    int exposure_recovery_boost_frames_ = 0;
+    uint64_t exposure_frame_counter_ = 0;
+    std::chrono::steady_clock::time_point exposure_last_debug_;
 };

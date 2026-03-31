@@ -2,8 +2,10 @@
 
 #include <libcamera/libcamera.h>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <memory>
 
 using namespace libcamera;
@@ -88,7 +90,18 @@ public:
         uint32_t height = 0;
     };
 
+    struct CaptureStats {
+        bool has_exposure_time = false;
+        int64_t exposure_time_us = 0;
+        bool has_analogue_gain = false;
+        float analogue_gain = 0.0f;
+        bool has_frame_duration = false;
+        int64_t frame_duration_us = 0;
+    };
+
     bool getFramePlanes(FrameBuffer* frame, PlaneData& y, PlaneData& u, PlaneData& v);
+    bool getFrameCaptureStats(FrameBuffer* frame, CaptureStats& stats) const;
+    void setRuntimeExposureControl(bool enabled, int exposure_time_us, float analogue_gain);
 
 private:
     std::unique_ptr<CameraManager> camera_manager_;
@@ -103,6 +116,10 @@ private:
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     uint32_t stride_ = 0;
+    std::mutex runtime_control_mutex_;
+    bool runtime_control_enabled_ = false;
+    int runtime_exposure_time_us_ = 0;
+    float runtime_analogue_gain_ = 0.0f;
 
     bool running_ = false;
 };

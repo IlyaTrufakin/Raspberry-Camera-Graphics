@@ -1,10 +1,13 @@
 #include "app.h"
 
+#include <array>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <thread>
 #include <unistd.h>
@@ -39,13 +42,40 @@ bool App::loadConfiguration(const std::string& path) {
     return ok;
 }
 
+static bool parseLiteralOffsetPx(const std::string& token, int16_t& out) {
+    if (token.empty()) {
+        return false;
+    }
+    try {
+        size_t pos = 0;
+        int value = std::stoi(token, &pos, 10);
+        while (pos < token.size() && std::isspace(static_cast<unsigned char>(token[pos]))) {
+            ++pos;
+        }
+        if (pos != token.size()) {
+            return false;
+        }
+        if (value < static_cast<int>(std::numeric_limits<int16_t>::min())) {
+            value = static_cast<int>(std::numeric_limits<int16_t>::min());
+        }
+        if (value > static_cast<int>(std::numeric_limits<int16_t>::max())) {
+            value = static_cast<int>(std::numeric_limits<int16_t>::max());
+        }
+        out = static_cast<int16_t>(value);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 CameraConfig App::buildCameraConfig() const {
     CameraConfig cam{};
     cam.width = config_.video.width;
     cam.height = config_.video.height;
     cam.buffer_count = config_.video.buffer_count;
 
-    cam.ae_enable = config_.camera.ae_enable;
+    // Adaptive exposure controller requires manual exposure mode.
+    cam.ae_enable = config_.camera.ae_enable && !config_.exposure_control.enabled;
     cam.awb_enable = config_.camera.awb_enable;
     cam.controls_dump = config_.camera.controls_dump;
     cam.exposure_time_us = config_.camera.exposure_time_us;
@@ -75,6 +105,16 @@ CameraConfig App::buildCameraConfig() const {
     cam.colour_gains_set = config_.camera.colour_gains_set;
     cam.colour_correction_matrix = config_.camera.colour_correction_matrix;
     cam.colour_correction_matrix_set = config_.camera.colour_correction_matrix_set;
+
+    if (config_.exposure_control.enabled) {
+        cam.ae_enable = false;
+        if (cam.exposure_time_mode < 0) {
+            cam.exposure_time_mode = 1;
+        }
+        if (cam.analogue_gain_mode < 0) {
+            cam.analogue_gain_mode = 1;
+        }
+    }
 
     cam.roi_enabled = config_.roi.enabled;
     cam.roi_x = config_.roi.x;
@@ -137,15 +177,13 @@ bool App::initialize() {
         std::cerr << "Failed to start camera" << std::endl;
         return false;
     }
+    initializeExposureControl();
 
     if (!hud_.initialize(display_.width(), display_.height(), config_.hud_font_path)) {
         std::cerr << "Failed to initialize HUD" << std::endl;
         return false;
     }
-    CrosshairConfig cross = config_.crosshair;
-    cross.h_limit_left = computeLeftEdge();
-    cross.h_limit_right = computeRightEdge();
-    hud_.setCrosshairConfig(cross);
+    updateLineObjects();
     hud_.setPanelConfigs(config_.panel_left, config_.panel_right);
     buildStaticHudCaches();
 
@@ -218,6 +256,374 @@ bool App::initialize() {
         return false;
     }
     return true;
+}
+
+void App::initializeExposureControl() {
+    exposure_control_active_ = config_.exposure_control.enabled;
+    exposure_recovery_boost_frames_ = 0;
+    exposure_frame_counter_ = 0;
+    exposure_last_debug_ = std::chrono::steady_clock::now();
+
+    if (!exposure_control_active_) {
+        camera_.setRuntimeExposureControl(false, 0, 0.0f);
+        return;
+    }
+
+    int min_exp = std::max(1, config_.exposure_control.min_exposure_us);
+    int max_exp = std::max(min_exp, config_.exposure_control.max_exposure_us);
+    float min_gain = std::max(0.1f, config_.exposure_control.min_gain);
+    float max_gain = std::max(min_gain, config_.exposure_control.max_gain);
+
+    int initial_exp = config_.camera.exposure_time_us;
+    if (initial_exp <= 0) {
+        initial_exp = (config_.camera.frame_duration_us > 0)
+                          ? (config_.camera.frame_duration_us / 2)
+                          : 4000;
+    }
+    if (initial_exp < min_exp) initial_exp = min_exp;
+    if (initial_exp > max_exp) initial_exp = max_exp;
+
+    float initial_gain = config_.camera.analogue_gain > 0.0f
+                             ? config_.camera.analogue_gain
+                             : min_gain;
+    if (initial_gain < min_gain) initial_gain = min_gain;
+    if (initial_gain > max_gain) initial_gain = max_gain;
+
+    exposure_time_us_ = initial_exp;
+    exposure_gain_ = initial_gain;
+
+    camera_.setRuntimeExposureControl(true, exposure_time_us_, exposure_gain_);
+
+    if (config_.exposure_control.debug) {
+        std::cout << "Exposure control enabled: exp_us=" << exposure_time_us_
+                  << " gain=" << exposure_gain_
+                  << " roi=(" << config_.exposure_control.roi_x << ","
+                  << config_.exposure_control.roi_y << ","
+                  << config_.exposure_control.roi_width << ","
+                  << config_.exposure_control.roi_height << ")"
+                  << std::endl;
+    }
+}
+
+void App::updateAdaptiveExposure(FrameBuffer* frame) {
+    if (!exposure_control_active_ || !frame) {
+        return;
+    }
+
+    const auto& cfg = config_.exposure_control;
+    int update_every = std::max(1, cfg.update_every_frames);
+    exposure_frame_counter_++;
+    if ((exposure_frame_counter_ % static_cast<uint64_t>(update_every)) != 0) {
+        return;
+    }
+
+    CameraStream::PlaneData y, u, v;
+    if (!camera_.getFramePlanes(frame, y, u, v)) {
+        return;
+    }
+    (void)u;
+    (void)v;
+    if (!y.data || y.width == 0 || y.height == 0 || y.stride == 0) {
+        return;
+    }
+
+    float rx = std::max(0.0f, std::min(1.0f, cfg.roi_x));
+    float ry = std::max(0.0f, std::min(1.0f, cfg.roi_y));
+    float rw = std::max(0.0f, std::min(1.0f, cfg.roi_width));
+    float rh = std::max(0.0f, std::min(1.0f, cfg.roi_height));
+    if (rw <= 0.0f || rh <= 0.0f) {
+        return;
+    }
+
+    uint32_t x0 = static_cast<uint32_t>(rx * static_cast<float>(y.width));
+    uint32_t y0 = static_cast<uint32_t>(ry * static_cast<float>(y.height));
+    uint32_t roi_w = std::max<uint32_t>(1, static_cast<uint32_t>(rw * static_cast<float>(y.width)));
+    uint32_t roi_h = std::max<uint32_t>(1, static_cast<uint32_t>(rh * static_cast<float>(y.height)));
+    uint32_t x1 = std::min<uint32_t>(y.width, x0 + roi_w);
+    uint32_t y1 = std::min<uint32_t>(y.height, y0 + roi_h);
+    if (x1 <= x0 || y1 <= y0) {
+        return;
+    }
+
+    int step = std::max(1, cfg.sample_step);
+    std::array<uint32_t, 256> hist{};
+    uint64_t sum = 0;
+    uint64_t samples = 0;
+
+    for (uint32_t yy = y0; yy < y1; yy += static_cast<uint32_t>(step)) {
+        const uint8_t* row = y.data + static_cast<size_t>(yy) * y.stride;
+        for (uint32_t xx = x0; xx < x1; xx += static_cast<uint32_t>(step)) {
+            uint8_t lum = row[xx];
+            hist[lum]++;
+            sum += lum;
+            samples++;
+        }
+    }
+
+    if (samples == 0) {
+        return;
+    }
+
+    auto percentile = [&](float p) -> int {
+        uint64_t target = static_cast<uint64_t>(p * static_cast<float>(samples));
+        if (target == 0) {
+            target = 1;
+        }
+        uint64_t accum = 0;
+        for (int i = 0; i < 256; ++i) {
+            accum += hist[static_cast<size_t>(i)];
+            if (accum >= target) {
+                return i;
+            }
+        }
+        return 255;
+    };
+
+    float mean = static_cast<float>(sum) / static_cast<float>(samples);
+    int p99 = percentile(0.99f);
+
+    int min_exp = std::max(1, cfg.min_exposure_us);
+    int max_exp = std::max(min_exp, cfg.max_exposure_us);
+    float min_gain = std::max(0.1f, cfg.min_gain);
+    float max_gain = std::max(min_gain, cfg.max_gain);
+
+    int next_exp = exposure_time_us_;
+    float next_gain = exposure_gain_;
+
+    uint64_t over_count = 0;
+    int high_bin = std::max(0, std::min(255, cfg.high_luma));
+    for (int i = high_bin; i < 256; ++i) {
+        over_count += hist[static_cast<size_t>(i)];
+    }
+    float over_ratio = static_cast<float>(over_count) / static_cast<float>(samples);
+
+    float target = std::max(1.0f, static_cast<float>(cfg.target_luma));
+    bool hard_highlight = (p99 > cfg.high_luma + 28) || (over_ratio > 0.10f);
+    bool soft_highlight = (p99 > cfg.high_luma) && (over_ratio > 0.02f) && (mean > target * 1.05f);
+    bool highlight_active = hard_highlight || soft_highlight;
+
+    bool recovery_boost = false;
+    if (exposure_recovery_boost_frames_ > 0) {
+        exposure_recovery_boost_frames_--;
+    }
+
+    if (hard_highlight) {
+        // Strong clipping: reduce exposure quickly, but limit step to avoid ping-pong.
+        float down = std::max(0.10f, std::min(0.98f, cfg.exposure_step_down));
+        float severity = 1.0f + static_cast<float>(std::max(0, p99 - cfg.high_luma)) / 64.0f;
+        if (severity > 1.8f) {
+            severity = 1.8f;
+        }
+        next_exp = std::max(min_exp, static_cast<int>(static_cast<float>(next_exp) * std::pow(down, severity)));
+        if (cfg.use_gain && next_gain > min_gain) {
+            float gain_drop = cfg.gain_step_down * (0.5f + 0.7f * severity);
+            next_gain = std::max(min_gain, next_gain - gain_drop);
+        }
+        exposure_recovery_boost_frames_ = 12;
+    } else if (soft_highlight) {
+        // Mild overexposure: gentle decay only.
+        next_exp = std::max(min_exp, static_cast<int>(static_cast<float>(next_exp) * 0.93f));
+        if (cfg.use_gain && next_gain > min_gain) {
+            next_gain = std::max(min_gain, next_gain - cfg.gain_step_down * 0.22f);
+        }
+        if (exposure_recovery_boost_frames_ < 6) {
+            exposure_recovery_boost_frames_ = 6;
+        }
+    } else if (mean < target - 1.0f) {
+        // Accelerate recovery only after highlight has fully cleared.
+        if (exposure_recovery_boost_frames_ > 0 &&
+            over_ratio < 0.01f &&
+            p99 < (cfg.high_luma - 12)) {
+            recovery_boost = true;
+        }
+        float deficit = (target - mean) / target;
+        if (deficit < 0.0f) {
+            deficit = 0.0f;
+        }
+        if (deficit > 1.0f) {
+            deficit = 1.0f;
+        }
+        float up_severity = 1.0f + deficit * 2.5f + (recovery_boost ? 0.9f : 0.0f);
+        float step_up = std::max(1.001f, cfg.exposure_step_up);
+        if (next_exp < max_exp) {
+            int grown = static_cast<int>(static_cast<float>(next_exp) * std::pow(step_up, up_severity));
+            int min_delta = 1 + static_cast<int>(std::round(deficit * (recovery_boost ? 10.0f : 5.0f)));
+            next_exp = std::min(max_exp, std::max(next_exp + min_delta, grown));
+        }
+        if (cfg.use_gain && next_gain < max_gain) {
+            float gain_up = cfg.gain_step_up * (1.0f + deficit * 2.5f + (recovery_boost ? 1.5f : 0.0f));
+            next_gain = std::min(max_gain, next_gain + gain_up);
+        }
+    } else if (mean > target + 6.0f) {
+        if (cfg.use_gain && next_gain > min_gain) {
+            next_gain = std::max(min_gain, next_gain - cfg.gain_step_down * 0.2f);
+        } else {
+            next_exp = std::max(min_exp, static_cast<int>(static_cast<float>(next_exp) * 0.97f));
+        }
+    }
+
+    // Slew-rate limits to suppress oscillations caused by control latency.
+    float up_cap = recovery_boost ? 1.55f : 1.30f;
+    float down_cap = hard_highlight ? 0.60f : 0.82f;
+    int exp_low_cap = std::max(min_exp, static_cast<int>(static_cast<float>(exposure_time_us_) * down_cap));
+    int exp_high_cap = std::min(max_exp, static_cast<int>(static_cast<float>(exposure_time_us_) * up_cap));
+    if (exp_high_cap < exp_low_cap) {
+        exp_high_cap = exp_low_cap;
+    }
+    next_exp = std::max(exp_low_cap, std::min(exp_high_cap, next_exp));
+
+    float gain_down_cap = hard_highlight ? 0.80f : 0.55f;
+    float gain_up_cap = recovery_boost ? 0.70f : 0.35f;
+    float gain_low_cap = std::max(min_gain, exposure_gain_ - gain_down_cap);
+    float gain_high_cap = std::min(max_gain, exposure_gain_ + gain_up_cap);
+    if (gain_high_cap < gain_low_cap) {
+        gain_high_cap = gain_low_cap;
+    }
+    next_gain = std::max(gain_low_cap, std::min(gain_high_cap, next_gain));
+
+    // Optional floor during highlight to prevent excessive dimming.
+    if (highlight_active) {
+        if (cfg.highlight_min_exposure_us > 0) {
+            int floor_exp = std::max(min_exp, cfg.highlight_min_exposure_us);
+            floor_exp = std::min(max_exp, floor_exp);
+            next_exp = std::max(next_exp, floor_exp);
+        }
+        if (cfg.use_gain && cfg.highlight_min_gain > 0.0f) {
+            float floor_gain = std::max(min_gain, cfg.highlight_min_gain);
+            floor_gain = std::min(max_gain, floor_gain);
+            next_gain = std::max(next_gain, floor_gain);
+        }
+    }
+
+    if (next_exp < min_exp) next_exp = min_exp;
+    if (next_exp > max_exp) next_exp = max_exp;
+    if (next_gain < min_gain) next_gain = min_gain;
+    if (next_gain > max_gain) next_gain = max_gain;
+
+    bool changed = (next_exp != exposure_time_us_) ||
+                   (std::fabs(next_gain - exposure_gain_) > 0.0001f);
+    if (changed) {
+        exposure_time_us_ = next_exp;
+        exposure_gain_ = next_gain;
+        camera_.setRuntimeExposureControl(true, exposure_time_us_, exposure_gain_);
+    }
+
+    if (cfg.debug) {
+        auto now = std::chrono::steady_clock::now();
+        if (now - exposure_last_debug_ >= std::chrono::milliseconds(500)) {
+            exposure_last_debug_ = now;
+            CameraStream::CaptureStats stats{};
+            bool has_stats = camera_.getFrameCaptureStats(frame, stats);
+            std::cout << "EXP ctrl: mean=" << mean
+                      << " p99=" << p99
+                      << " over=" << over_ratio
+                      << " hl=" << (highlight_active ? 1 : 0)
+                      << " samples=" << samples
+                      << " exp_target_us=" << exposure_time_us_
+                      << " gain_target=" << exposure_gain_;
+            if (has_stats) {
+                if (stats.has_exposure_time) {
+                    std::cout << " exp_actual_us=" << stats.exposure_time_us;
+                }
+                if (stats.has_analogue_gain) {
+                    std::cout << " gain_actual=" << stats.analogue_gain;
+                }
+                if (stats.has_frame_duration) {
+                    std::cout << " frame_us=" << stats.frame_duration_us;
+                }
+            }
+            std::cout
+                      << std::endl;
+        }
+    }
+}
+
+void App::updateLineObjects() {
+    std::vector<LineObjectRender> lines;
+    if (display_.width() <= 0 || display_.height() <= 0) {
+        hud_.setLineObjects(lines);
+        return;
+    }
+
+    const float width = static_cast<float>(display_.width());
+    const float height = static_cast<float>(display_.height());
+    const float center_x_px = width * 0.5f;
+    const float center_y_px = height * 0.5f;
+
+    float left = computeLeftEdge() * 2.0f - 1.0f;
+    float right = computeRightEdge() * 2.0f - 1.0f;
+    if (right <= left) {
+        left = -1.0f;
+        right = 1.0f;
+    }
+
+    lines.reserve(config_.vertical_lines.size() + config_.horizontal_lines.size());
+
+    for (const auto& cfg : config_.vertical_lines) {
+        if (!cfg.enabled) {
+            continue;
+        }
+
+        int16_t offset_px = 0;
+        uint16_t raw = 0;
+        if (!cfg.offset_var.empty()) {
+            if (use_modbus_ && modbus_.getVariable(cfg.offset_var, raw)) {
+                offset_px = static_cast<int16_t>(raw);
+            } else if (parseLiteralOffsetPx(cfg.offset_var, offset_px)) {
+            }
+        }
+
+        float x_px = center_x_px + static_cast<float>(offset_px);
+        if (x_px < 0.0f) x_px = 0.0f;
+        if (x_px > width) x_px = width;
+        float x_ndc = 2.0f * (x_px / width) - 1.0f;
+
+        LineObjectRender line;
+        line.x0_ndc = x_ndc;
+        line.y0_ndc = 1.0f;
+        line.x1_ndc = x_ndc;
+        line.y1_ndc = -1.0f;
+        line.color = cfg.color;
+        line.line_width = cfg.line_width;
+        line.line_style = cfg.line_style;
+        line.dash_length = 2.0f * (std::max(1.0f, cfg.dash_length_px) / height);
+        line.dash_gap = 2.0f * (std::max(0.0f, cfg.dash_gap_px) / height);
+        lines.push_back(line);
+    }
+
+    for (const auto& cfg : config_.horizontal_lines) {
+        if (!cfg.enabled) {
+            continue;
+        }
+
+        int16_t offset_px = 0;
+        uint16_t raw = 0;
+        if (!cfg.offset_var.empty()) {
+            if (use_modbus_ && modbus_.getVariable(cfg.offset_var, raw)) {
+                offset_px = static_cast<int16_t>(raw);
+            } else if (parseLiteralOffsetPx(cfg.offset_var, offset_px)) {
+            }
+        }
+
+        float y_px = center_y_px + static_cast<float>(offset_px);
+        if (y_px < 0.0f) y_px = 0.0f;
+        if (y_px > height) y_px = height;
+        float y_ndc = -(2.0f * (y_px / height) - 1.0f);
+
+        LineObjectRender line;
+        line.x0_ndc = left;
+        line.y0_ndc = y_ndc;
+        line.x1_ndc = right;
+        line.y1_ndc = y_ndc;
+        line.color = cfg.color;
+        line.line_width = cfg.line_width;
+        line.line_style = cfg.line_style;
+        line.dash_length = 2.0f * (std::max(1.0f, cfg.dash_length_px) / width);
+        line.dash_gap = 2.0f * (std::max(0.0f, cfg.dash_gap_px) / width);
+        lines.push_back(line);
+    }
+
+    hud_.setLineObjects(lines);
 }
 
 void App::buildStaticHudCaches() {
@@ -321,37 +727,10 @@ void App::buildStaticHudCaches() {
     hud_.setStaticTextPositions(static_texts);
 }
 
-void App::updateCrosshair() {
-    if (!use_modbus_ || !config_.crosshair.modbus_override) {
-        return;
-    }
-
-    uint16_t raw_x = 0;
-    uint16_t raw_y = 0;
-    if (modbus_.getVariable("crosshair_x", raw_x)) {
-        raw_x = static_cast<uint16_t>(raw_x);
-    }
-    if (modbus_.getVariable("crosshair_y", raw_y)) {
-        raw_y = static_cast<uint16_t>(raw_y);
-    }
-
-    CrosshairConfig cross = config_.crosshair;
-    cross.h_limit_left = computeLeftEdge();
-    cross.h_limit_right = computeRightEdge();
-    cross.center_x = 0.5f + static_cast<float>(static_cast<int16_t>(raw_x)) /
-                                  static_cast<float>(display_.width());
-    cross.center_y = 0.5f + static_cast<float>(static_cast<int16_t>(raw_y)) /
-                                  static_cast<float>(display_.height());
-    if (cross.center_x < 0.0f) cross.center_x = 0.0f;
-    if (cross.center_x > 1.0f) cross.center_x = 1.0f;
-    if (cross.center_y < 0.0f) cross.center_y = 0.0f;
-    if (cross.center_y > 1.0f) cross.center_y = 1.0f;
-    hud_.setCrosshairConfig(cross);
-}
-
 void App::updateHud(const std::string& fps_text) {
     hud_.clearDynamicTextPositions();
     hud_.clearDynamicRectPositions();
+    updateLineObjects();
 
     bool modbus_link_ok = use_modbus_ && modbus_.isConnected();
 
@@ -445,13 +824,13 @@ void App::runLoop() {
         bool got_frame = false;
         if (frame) {
             renderer_.uploadFrame(camera_, frame);
+            updateAdaptiveExposure(frame);
             camera_.returnFrame(frame);
             got_frame = true;
         }
 
         auto now = std::chrono::steady_clock::now();
         if (now - last_hud_update >= std::chrono::milliseconds(hud_interval_ms)) {
-            updateCrosshair();
             updateHud(fps_text);
             last_hud_update = now;
         }

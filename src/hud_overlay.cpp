@@ -322,8 +322,8 @@ bool HUDOverlay::initialize(uint32_t display_width, uint32_t display_height,
     return true;
 }
 
-void HUDOverlay::setCrosshairConfig(const CrosshairConfig& config) {
-    crosshair_config_ = config;
+void HUDOverlay::setLineObjects(const std::vector<LineObjectRender>& lines) {
+    line_objects_ = lines;
 }
 
 void HUDOverlay::setPanelConfigs(const PanelConfig& left, const PanelConfig& right) {
@@ -379,8 +379,8 @@ void HUDOverlay::render() {
         renderRectangles();
     }
 
-    if (crosshair_config_.enabled) {
-        renderCrosshair();
+    if (!line_objects_.empty()) {
+        renderLineObjects(line_objects_);
     }
 
     renderText();
@@ -464,27 +464,13 @@ void HUDOverlay::renderRectangles() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void HUDOverlay::renderCrosshair() {
-    glUseProgram(hud_program_);
-
-    GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
-    glUniform4f(colorLoc,
-                crosshair_config_.color.r,
-                crosshair_config_.color.g,
-                crosshair_config_.color.b,
-                crosshair_config_.color.a);
-
-    float cx = crosshair_config_.center_x * 2.0f - 1.0f;
-    float cy = -(crosshair_config_.center_y * 2.0f - 1.0f);
-
-    float gap = crosshair_config_.gap;
-    float left = crosshair_config_.h_limit_left * 2.0f - 1.0f;
-    float right = crosshair_config_.h_limit_right * 2.0f - 1.0f;
-    if (left > right) {
-        std::swap(left, right);
+void HUDOverlay::renderLineObjects(const std::vector<LineObjectRender>& lines) {
+    if (lines.empty()) {
+        return;
     }
 
-    glLineWidth(crosshair_config_.line_width);
+    glUseProgram(hud_program_);
+    GLint colorLoc = glGetUniformLocation(hud_program_, "uColor");
 
     glBindBuffer(GL_ARRAY_BUFFER, hud_vbo_);
     GLint posLoc = glGetAttribLocation(hud_program_, "aPos");
@@ -520,61 +506,30 @@ void HUDOverlay::renderCrosshair() {
         }
     };
 
-    std::vector<float> verts;
-    if (crosshair_config_.line_style == 0) {
-        float left_end = cx - gap;
-        float right_start = cx + gap;
+    for (const auto& line : lines) {
+        if (!line.enabled) {
+            continue;
+        }
 
-        float h_line[] = {
-            left, cy,
-            left_end, cy,
-            right_start, cy,
-            right, cy
-        };
+        glUniform4f(colorLoc, line.color.r, line.color.g, line.color.b, line.color.a);
+        glLineWidth(std::max(1.0f, line.line_width));
 
-        float top = 1.0f;
-        float bottom = -1.0f;
-        float v_line[] = {
-            cx, top,
-            cx, cy + gap,
-            cx, cy - gap,
-            cx, bottom
-        };
-
-        if (left_end > left) {
-            glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
+        if (line.line_style == 0) {
+            float vertices[] = {
+                line.x0_ndc, line.y0_ndc,
+                line.x1_ndc, line.y1_ndc
+            };
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
             glDrawArrays(GL_LINES, 0, 2);
-        }
-        if (right_start < right) {
-            glBufferData(GL_ARRAY_BUFFER, sizeof(h_line), h_line, GL_DYNAMIC_DRAW);
-            glDrawArrays(GL_LINES, 2, 2);
-        }
-
-        glBufferData(GL_ARRAY_BUFFER, sizeof(v_line), v_line, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_LINES, 0, 2);
-        glDrawArrays(GL_LINES, 2, 2);
-    } else {
-        float dash_len = std::max(0.001f, crosshair_config_.dash_length);
-        float dash_gap = std::max(0.0f, crosshair_config_.dash_gap);
-        if (cx - gap > left) {
-            addDashedLine(verts, left, cy, cx - gap, cy, dash_len, dash_gap);
-        }
-        if (cx + gap < right) {
-            addDashedLine(verts, cx + gap, cy, right, cy, dash_len, dash_gap);
-        }
-
-        float top = 1.0f;
-        float bottom = -1.0f;
-        if (cy + gap < top) {
-            addDashedLine(verts, cx, top, cx, cy + gap, dash_len, dash_gap);
-        }
-        if (cy - gap > bottom) {
-            addDashedLine(verts, cx, cy - gap, cx, bottom, dash_len, dash_gap);
-        }
-
-        if (!verts.empty()) {
-            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verts.size(), verts.data(), GL_DYNAMIC_DRAW);
-            glDrawArrays(GL_LINES, 0, static_cast<GLint>(verts.size() / 2));
+        } else {
+            std::vector<float> verts;
+            addDashedLine(verts, line.x0_ndc, line.y0_ndc, line.x1_ndc, line.y1_ndc,
+                          std::max(0.001f, line.dash_length),
+                          std::max(0.0f, line.dash_gap));
+            if (!verts.empty()) {
+                glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verts.size(), verts.data(), GL_DYNAMIC_DRAW);
+                glDrawArrays(GL_LINES, 0, static_cast<GLint>(verts.size() / 2));
+            }
         }
     }
 
