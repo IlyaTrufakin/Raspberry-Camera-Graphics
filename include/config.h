@@ -93,6 +93,7 @@ struct ModbusSettings {
 struct CameraSettings {
     bool ae_enable = true;
     bool awb_enable = true;
+    std::string stream_role = "viewfinder";
     bool controls_dump = false;
     int exposure_time_us = 0;
     float analogue_gain = 0.0f;
@@ -102,6 +103,9 @@ struct CameraSettings {
     float sharpness = 0.0f;
     float exposure_compensation = 0.0f;
     int frame_duration_us = 0;
+    int sensor_mode_width = 0;
+    int sensor_mode_height = 0;
+    int sensor_bit_depth = 0;
     int ae_metering = -1;
     int ae_constraint = -1;
     int ae_exposure_mode = -1;

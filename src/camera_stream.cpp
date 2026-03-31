@@ -7,6 +7,9 @@
 #include <libcamera/control_ids.h>
 #include <libcamera/property_ids.h>
 #include <libcamera/controls.h>
+#if __has_include(<libcamera/version.h>)
+#include <libcamera/version.h>
+#endif
 
 static float clamp01(float v) {
     return std::max(0.0f, std::min(1.0f, v));
@@ -96,6 +99,26 @@ bool CameraStream::initialize(const CameraConfig& config) {
     streamConfig.pixelFormat = PixelFormat::fromString("YUV420");
     streamConfig.bufferCount = config.buffer_count;
 
+#if defined(LIBCAMERA_VERSION_MAJOR)
+#if (LIBCAMERA_VERSION_MAJOR > 0) || (LIBCAMERA_VERSION_MINOR >= 3)
+    if (config.sensor_mode_width > 0 && config.sensor_mode_height > 0) {
+        SensorConfiguration sensor_cfg;
+        sensor_cfg.outputSize = Size(static_cast<unsigned int>(config.sensor_mode_width),
+                                     static_cast<unsigned int>(config.sensor_mode_height));
+        if (config.sensor_bit_depth > 0) {
+            sensor_cfg.bitDepth = static_cast<unsigned int>(config.sensor_bit_depth);
+        }
+        config_->sensorConfig = sensor_cfg;
+        std::cout << "Requested sensor mode: "
+                  << sensor_cfg.outputSize.width << "x" << sensor_cfg.outputSize.height;
+        if (config.sensor_bit_depth > 0) {
+            std::cout << " " << config.sensor_bit_depth << "-bit";
+        }
+        std::cout << std::endl;
+    }
+#endif
+#endif
+
     CameraConfiguration::Status validation = config_->validate();
     if (validation == CameraConfiguration::Invalid) {
         std::cerr << "Camera configuration invalid" << std::endl;
@@ -108,6 +131,17 @@ bool CameraStream::initialize(const CameraConfig& config) {
         std::cout << "  Format: " << streamConfig.pixelFormat.toString() << std::endl;
         std::cout << "  Stride: " << streamConfig.stride << std::endl;
     }
+
+#if defined(LIBCAMERA_VERSION_MAJOR)
+#if (LIBCAMERA_VERSION_MAJOR > 0) || (LIBCAMERA_VERSION_MINOR >= 3)
+    if (config_->sensorConfig) {
+        const SensorConfiguration& sensor_cfg = *config_->sensorConfig;
+        std::cout << "Sensor config: "
+                  << sensor_cfg.outputSize.width << "x" << sensor_cfg.outputSize.height
+                  << " bitDepth=" << sensor_cfg.bitDepth << std::endl;
+    }
+#endif
+#endif
 
     if (camera_->configure(config_.get())) {
         std::cerr << "Failed to configure camera" << std::endl;

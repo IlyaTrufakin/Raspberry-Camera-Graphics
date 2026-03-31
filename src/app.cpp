@@ -42,6 +42,25 @@ bool App::loadConfiguration(const std::string& path) {
     return ok;
 }
 
+static StreamRole parseStreamRole(const std::string& role_name) {
+    std::string role;
+    role.reserve(role_name.size());
+    for (char ch : role_name) {
+        role.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+
+    if (role == "video" || role == "video_recording" || role == "recording") {
+        return StreamRole::VideoRecording;
+    }
+    if (role == "still" || role == "still_capture" || role == "photo") {
+        return StreamRole::StillCapture;
+    }
+    if (role == "raw") {
+        return StreamRole::Raw;
+    }
+    return StreamRole::Viewfinder;
+}
+
 static bool parseLiteralOffsetPx(const std::string& token, int16_t& out) {
     if (token.empty()) {
         return false;
@@ -73,6 +92,7 @@ CameraConfig App::buildCameraConfig() const {
     cam.width = config_.video.width;
     cam.height = config_.video.height;
     cam.buffer_count = config_.video.buffer_count;
+    cam.role = parseStreamRole(config_.camera.stream_role);
 
     // Adaptive exposure controller requires manual exposure mode.
     cam.ae_enable = config_.camera.ae_enable && !config_.exposure_control.enabled;
@@ -86,6 +106,9 @@ CameraConfig App::buildCameraConfig() const {
     cam.sharpness = config_.camera.sharpness;
     cam.exposure_compensation = config_.camera.exposure_compensation;
     cam.frame_duration_us = config_.camera.frame_duration_us;
+    cam.sensor_mode_width = config_.camera.sensor_mode_width;
+    cam.sensor_mode_height = config_.camera.sensor_mode_height;
+    cam.sensor_bit_depth = config_.camera.sensor_bit_depth;
     cam.ae_metering = config_.camera.ae_metering;
     cam.ae_constraint = config_.camera.ae_constraint;
     cam.ae_exposure_mode = config_.camera.ae_exposure_mode;
@@ -261,6 +284,12 @@ bool App::initialize() {
 void App::initializeExposureControl() {
     exposure_control_active_ = config_.exposure_control.enabled;
     exposure_recovery_boost_frames_ = 0;
+    exposure_settle_hold_frames_ = 0;
+    exposure_mean_ema_ = -1.0f;
+    exposure_p99_ema_ = -1.0f;
+    exposure_highlight_latched_ = false;
+    exposure_highlight_enter_counter_ = 0;
+    exposure_highlight_exit_counter_ = 0;
     exposure_frame_counter_ = 0;
     exposure_last_debug_ = std::chrono::steady_clock::now();
 
@@ -379,8 +408,23 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
         return 255;
     };
 
-    float mean = static_cast<float>(sum) / static_cast<float>(samples);
-    int p99 = percentile(0.99f);
+    float mean_raw = static_cast<float>(sum) / static_cast<float>(samples);
+    int p99_raw = percentile(0.99f);
+
+    const float ema_alpha = 0.25f;
+    if (exposure_mean_ema_ < 0.0f) {
+        exposure_mean_ema_ = mean_raw;
+    } else {
+        exposure_mean_ema_ = exposure_mean_ema_ + ema_alpha * (mean_raw - exposure_mean_ema_);
+    }
+    if (exposure_p99_ema_ < 0.0f) {
+        exposure_p99_ema_ = static_cast<float>(p99_raw);
+    } else {
+        exposure_p99_ema_ = exposure_p99_ema_ + ema_alpha * (static_cast<float>(p99_raw) - exposure_p99_ema_);
+    }
+
+    float mean = exposure_mean_ema_;
+    int p99 = static_cast<int>(std::round(exposure_p99_ema_));
 
     int min_exp = std::max(1, cfg.min_exposure_us);
     int max_exp = std::max(min_exp, cfg.max_exposure_us);
@@ -400,11 +444,47 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
     float target = std::max(1.0f, static_cast<float>(cfg.target_luma));
     bool hard_highlight = (p99 > cfg.high_luma + 28) || (over_ratio > 0.10f);
     bool soft_highlight = (p99 > cfg.high_luma) && (over_ratio > 0.02f) && (mean > target * 1.05f);
-    bool highlight_active = hard_highlight || soft_highlight;
+    bool highlight_candidate = hard_highlight || soft_highlight;
+
+    // Hysteresis for highlight mode to suppress mode flapping.
+    if (hard_highlight) {
+        exposure_highlight_latched_ = true;
+        exposure_highlight_enter_counter_ = 0;
+        exposure_highlight_exit_counter_ = 0;
+    } else if (!exposure_highlight_latched_) {
+        if (highlight_candidate) {
+            exposure_highlight_enter_counter_++;
+            if (exposure_highlight_enter_counter_ >= 2) {
+                exposure_highlight_latched_ = true;
+                exposure_highlight_enter_counter_ = 0;
+                exposure_highlight_exit_counter_ = 0;
+            }
+        } else {
+            exposure_highlight_enter_counter_ = 0;
+        }
+    } else {
+        bool clear_candidate = (p99 < cfg.high_luma - 18) && (over_ratio < 0.008f);
+        if (clear_candidate) {
+            exposure_highlight_exit_counter_++;
+            if (exposure_highlight_exit_counter_ >= 8) {
+                exposure_highlight_latched_ = false;
+                exposure_highlight_enter_counter_ = 0;
+                exposure_highlight_exit_counter_ = 0;
+            }
+        } else {
+            exposure_highlight_exit_counter_ = 0;
+        }
+    }
+
+    bool highlight_active = exposure_highlight_latched_;
+    bool in_settle_hold = (exposure_settle_hold_frames_ > 0);
 
     bool recovery_boost = false;
     if (exposure_recovery_boost_frames_ > 0) {
         exposure_recovery_boost_frames_--;
+    }
+    if (exposure_settle_hold_frames_ > 0) {
+        exposure_settle_hold_frames_--;
     }
 
     if (hard_highlight) {
@@ -420,6 +500,7 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
             next_gain = std::max(min_gain, next_gain - gain_drop);
         }
         exposure_recovery_boost_frames_ = 12;
+        exposure_settle_hold_frames_ = 0;
     } else if (soft_highlight) {
         // Mild overexposure: gentle decay only.
         next_exp = std::max(min_exp, static_cast<int>(static_cast<float>(next_exp) * 0.93f));
@@ -429,12 +510,16 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
         if (exposure_recovery_boost_frames_ < 6) {
             exposure_recovery_boost_frames_ = 6;
         }
-    } else if (mean < target - 1.0f) {
+        exposure_settle_hold_frames_ = 0;
+    } else if (mean < target - 2.5f) {
         // Accelerate recovery only after highlight has fully cleared.
         if (exposure_recovery_boost_frames_ > 0 &&
             over_ratio < 0.01f &&
             p99 < (cfg.high_luma - 12)) {
             recovery_boost = true;
+            if (exposure_settle_hold_frames_ < 10) {
+                exposure_settle_hold_frames_ = 10;
+            }
         }
         float deficit = (target - mean) / target;
         if (deficit < 0.0f) {
@@ -454,7 +539,7 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
             float gain_up = cfg.gain_step_up * (1.0f + deficit * 2.5f + (recovery_boost ? 1.5f : 0.0f));
             next_gain = std::min(max_gain, next_gain + gain_up);
         }
-    } else if (mean > target + 6.0f) {
+    } else if (mean > target + 9.0f && !in_settle_hold) {
         if (cfg.use_gain && next_gain > min_gain) {
             next_gain = std::max(min_gain, next_gain - cfg.gain_step_down * 0.2f);
         } else {
@@ -515,9 +600,13 @@ void App::updateAdaptiveExposure(FrameBuffer* frame) {
             CameraStream::CaptureStats stats{};
             bool has_stats = camera_.getFrameCaptureStats(frame, stats);
             std::cout << "EXP ctrl: mean=" << mean
+                      << " mean_raw=" << mean_raw
                       << " p99=" << p99
+                      << " p99_raw=" << p99_raw
                       << " over=" << over_ratio
+                      << " hlcand=" << (highlight_candidate ? 1 : 0)
                       << " hl=" << (highlight_active ? 1 : 0)
+                      << " hold=" << (in_settle_hold ? 1 : 0)
                       << " samples=" << samples
                       << " exp_target_us=" << exposure_time_us_
                       << " gain_target=" << exposure_gain_;

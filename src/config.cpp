@@ -324,6 +324,8 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 parseBool(value, config.camera.ae_enable);
             } else if (key == "awb_enable") {
                 parseBool(value, config.camera.awb_enable);
+            } else if (key == "stream_role" || key == "role") {
+                config.camera.stream_role = toLower(trim(value));
             } else if (key == "controls_dump") {
                 parseBool(value, config.camera.controls_dump);
             } else if (key == "exposure_time_us") {
@@ -347,6 +349,21 @@ bool loadConfig(const std::string& path, AppConfig& config) {
                 uint32_t tmp = 0;
                 if (parseUInt(value, tmp)) {
                     config.camera.frame_duration_us = static_cast<int>(tmp);
+                }
+            } else if (key == "sensor_mode_width" || key == "sensor_width") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.camera.sensor_mode_width = tmp;
+                }
+            } else if (key == "sensor_mode_height" || key == "sensor_height") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.camera.sensor_mode_height = tmp;
+                }
+            } else if (key == "sensor_bit_depth" || key == "sensor_bitdepth" || key == "bit_depth") {
+                int tmp = 0;
+                if (parseInt(value, tmp)) {
+                    config.camera.sensor_bit_depth = tmp;
                 }
             } else if (key == "ae_metering") {
                 parseInt(value, config.camera.ae_metering);

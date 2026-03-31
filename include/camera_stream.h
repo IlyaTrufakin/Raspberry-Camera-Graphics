@@ -27,6 +27,9 @@ struct CameraConfig {
     float sharpness = 0.0f;
     float exposure_compensation = 0.0f;
     int frame_duration_us = 0;
+    int sensor_mode_width = 0;
+    int sensor_mode_height = 0;
+    int sensor_bit_depth = 0;
     int ae_metering = -1;
     int ae_constraint = -1;
     int ae_exposure_mode = -1;

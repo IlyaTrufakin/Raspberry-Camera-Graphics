@@ -47,6 +47,12 @@ private:
     int exposure_time_us_ = 0;
     float exposure_gain_ = 1.0f;
     int exposure_recovery_boost_frames_ = 0;
+    int exposure_settle_hold_frames_ = 0;
+    float exposure_mean_ema_ = -1.0f;
+    float exposure_p99_ema_ = -1.0f;
+    bool exposure_highlight_latched_ = false;
+    int exposure_highlight_enter_counter_ = 0;
+    int exposure_highlight_exit_counter_ = 0;
     uint64_t exposure_frame_counter_ = 0;
     std::chrono::steady_clock::time_point exposure_last_debug_;
 };
