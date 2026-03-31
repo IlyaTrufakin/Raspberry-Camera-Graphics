@@ -1,7 +1,11 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O2 -Iinclude -I/usr/include/libcamera -I/usr/include/libdrm -I/usr/include/freetype2
+PKG_MODULES = libcamera libdrm gbm egl glesv2 freetype2 libmodbus
+PKG_CFLAGS = $(shell pkg-config --cflags $(PKG_MODULES))
+PKG_LIBS = $(shell pkg-config --libs $(PKG_MODULES))
 
-LIBS = -ldrm -lgbm -lEGL -lGLESv2 -lcamera -lcamera-base -lpthread -lfreetype -lmodbus
+CXXFLAGS = -std=c++17 -Wall -O2 -Iinclude $(PKG_CFLAGS)
+
+LIBS = $(PKG_LIBS) -lcamera-base -lpthread
 
 SRC_DIR = src
 SOURCES = $(SRC_DIR)/main.cpp \

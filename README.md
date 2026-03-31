@@ -1,4 +1,4 @@
-﻿# Raspberry-Camera-Graphics
+# Raspberry-Camera-Graphics
 
 Приложение на C++17 для Raspberry Pi: захват видео с камеры через libcamera и вывод в полноэкранный DRM/KMS‑дисплей с HUD‑оверлеем (текст, панели, прицел). Поддерживается чтение значений по Modbus TCP и отображение динамических параметров (включая FPS и статусные биты).
 
@@ -10,13 +10,13 @@
 - Гибкая настройка через `config.ini`.
 
 ## Сборка
-Зависимости (минимум):
-- libcamera
-- libdrm, gbm
-- EGL, OpenGL ES 2.0
-- FreeType2
-- libmodbus
-- pthread
+Проект протестирован на Raspberry Pi 4 и Raspberry Pi 5 с ОС Raspberry Pi OS Lite (Bookworm).
+
+Зависимости (установка в Bookworm):
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config libcamera-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libfreetype-dev libmodbus-dev
+```
 
 Сборка:
 ```bash
